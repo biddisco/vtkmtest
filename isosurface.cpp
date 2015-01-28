@@ -91,6 +91,7 @@ public:
 /// Global variables
 ///
 Quaternion qrot;
+bool render_enabled = true;
 int lastx, lasty;
 int mouse_state = 1;
 IsosurfaceFilterUniformGrid<vtkm::Float32, vtkm::Float32>* isosurfaceFilter;
@@ -112,9 +113,6 @@ public:
   typedef typename PortalTypes<vtkm::Id>::PortalConst TablePortalType;
   TablePortalType vertexTable;
 
-  //VTKM_CONT_EXPORT
-  //ClassifyCell() { };
-
   float isovalue;
   int xdim, ydim, zdim;
   int cellsPerLayer;
@@ -122,12 +120,12 @@ public:
 
   VTKM_CONT_EXPORT
   ClassifyCell(FieldPortalType pointData, TablePortalType vertexTable, float isovalue, int xdim, int ydim, int zdim) :
-	       pointData(pointData),
-	       vertexTable(vertexTable),
-	       isovalue(isovalue),
-	       xdim(xdim), ydim(ydim), zdim(zdim),
-	       cellsPerLayer((xdim - 1) * (ydim - 1)),
-	       pointsPerLayer (xdim*ydim) {}
+         pointData(pointData),
+         vertexTable(vertexTable),
+         isovalue(isovalue),
+         xdim(xdim), ydim(ydim), zdim(zdim),
+         cellsPerLayer((xdim - 1) * (ydim - 1)),
+         pointsPerLayer (xdim*ydim) {}
 
   VTKM_EXEC_EXPORT
   vtkm::Pair<vtkm::Id, vtkm::Id> operator()(const vtkm::Id &cellId) const
@@ -140,7 +138,7 @@ public:
     // Compute indices for the eight vertices of this cell
     const int i0 = x    + y*xdim + z * pointsPerLayer;
     const int i1 = i0   + 1;
-    const int i2 = i0   + 1	+ xdim;
+    const int i2 = i0   + 1 + xdim;
     const int i3 = i0   + xdim;
     const int i4 = i0   + pointsPerLayer;
     const int i5 = i1   + pointsPerLayer;
@@ -207,9 +205,6 @@ public:
   typedef PortalTypes< vtkm::Pair< vtkm::Id, vtkm::Id> >::PortalConst InputDomainPortalType;
   InputDomainPortalType inputDomain;
 
-  //VTKM_CONT_EXPORT
-  //Permute() { };
-
   VTKM_CONT_EXPORT
   Permute(int pairIndex, InputDomainPortalType inputDomain) : pairIndex(pairIndex), inputDomain(inputDomain) {}
 
@@ -233,7 +228,7 @@ public:
   typedef _1 InputDomain;
 
   typedef typename PortalTypes< vtkm::Id >::PortalConst IdPortalType;
-  IdPortalType outputVerticesEnum, triangleTable;
+  IdPortalType validCellIndices, outputVerticesEnum, triangleTable;
 
   typedef typename PortalTypes< vtkm::Pair<vtkm::Id, vtkm::Id> >::PortalConst IdPairPortalType;
   IdPairPortalType caseInfo;
@@ -251,21 +246,22 @@ public:
   const float isovalue, xmin, ymin, zmin, xmax, ymax, zmax;
 
   VTKM_CONT_EXPORT
-  IsosurfaceFunctorUniformGrid(const float isovalue, const int dims[3], const float mins[3], const float maxs[3], IdPortalType outputVerticesEnum, IdPairPortalType caseInfo, FieldPortalType field,
-                   FieldPortalType source, IdPortalType triangleTable, VertexPortalType vertices, VertexPortalType normals, ScalarPortalType scalars) : isovalue(isovalue), xdim(dims[0]), ydim(dims[1]),
-                   zdim(dims[2]), xmin(mins[0]), ymin(mins[1]), zmin(mins[2]), xmax(maxs[0]), ymax(maxs[1]), zmax(maxs[2]), outputVerticesEnum(outputVerticesEnum), caseInfo(caseInfo), field(field),
-                   source(source), triangleTable(triangleTable), vertices(vertices), normals(normals), scalars(scalars), cellsPerLayer((xdim-1) * (ydim-1)) {}
+  IsosurfaceFunctorUniformGrid(const float isovalue, const int dims[3], const float mins[3], const float maxs[3], IdPortalType validCellIndices, IdPortalType outputVerticesEnum, IdPairPortalType caseInfo,
+                   FieldPortalType field, FieldPortalType source, IdPortalType triangleTable, VertexPortalType vertices, VertexPortalType normals, ScalarPortalType scalars) : isovalue(isovalue), xdim(dims[0]),
+                   ydim(dims[1]), zdim(dims[2]), xmin(mins[0]), ymin(mins[1]), zmin(mins[2]), xmax(maxs[0]), ymax(maxs[1]), zmax(maxs[2]), validCellIndices(validCellIndices), outputVerticesEnum(outputVerticesEnum),
+                   caseInfo(caseInfo), field(field), source(source), triangleTable(triangleTable), vertices(vertices), normals(normals), scalars(scalars), cellsPerLayer((xdim-1) * (ydim-1)) {}
 
   VTKM_EXEC_EXPORT
-  vtkm::Id operator()(const vtkm::Id &cellId) const
+  vtkm::Id operator()(const vtkm::Id &index) const
   {
     // Get data for this cell
-    const int outputVertId = this->outputVerticesEnum.Get(cellId);
+    const vtkm::Id cellId = validCellIndices.Get(index);
+    const int outputVertId = this->outputVerticesEnum.Get(index); //cellId);
     const int cubeindex    = caseInfo.Get(cellId).first;
     const int numVertices  = caseInfo.Get(cellId).second;
     const int verticesForEdge[] = { 0, 1, 1, 2, 3, 2, 0, 3,
-	                            4, 5, 5, 6, 7, 6, 4, 7,
-	                            0, 4, 1, 5, 2, 6, 3, 7 };
+                              4, 5, 5, 6, 7, 6, 4, 7,
+                              0, 4, 1, 5, 2, 6, 3, 7 };
 
     // Compute 3D indices of this cell
     int x = cellId % (xdim - 1);
@@ -276,7 +272,7 @@ public:
     int i[8];
     i[0] = x      + y*xdim + z * xdim * ydim;
     i[1] = i[0]   + 1;
-    i[2] = i[0]   + 1	+ xdim;
+    i[2] = i[0]   + 1 + xdim;
     i[3] = i[0]   + xdim;
     i[4] = i[0]   + xdim * ydim;
     i[5] = i[1]   + xdim * ydim;
@@ -346,6 +342,41 @@ public:
 };
 
 
+/// \brief Return the tangle field value for each vertex
+///
+class TangleField : public vtkm::worklet::WorkletMapField
+{
+public:
+  typedef void ControlSignature(FieldIn<IdType> vertexId, FieldOut<Scalar> tangleFieldValue);
+  typedef _2 ExecutionSignature(_1);
+  typedef _1 InputDomain;
+
+  const int xdim, ydim, zdim, cellsPerLayer;
+  const float xmin, ymin, zmin, xmax, ymax, zmax;
+
+  VTKM_CONT_EXPORT
+  TangleField(const int dims[3], const float mins[3], const float maxs[3]) : xdim(dims[0]), ydim(dims[1]), zdim(dims[2]),
+              xmin(mins[0]), ymin(mins[1]), zmin(mins[2]), xmax(maxs[0]), ymax(maxs[1]), zmax(maxs[2]), cellsPerLayer((xdim) * (ydim)) { };
+
+  VTKM_EXEC_EXPORT
+  vtkm::Float32 operator()(const vtkm::Id &vertexId) const
+  {
+    // Compute 3D indices of this cell
+    const int x = vertexId % (xdim);
+    const int y = (vertexId / (xdim)) % (ydim);
+    const int z = vertexId / cellsPerLayer;
+
+    const float xx = 3.0*(xmin+(xmax-xmin)*(1.0*x/(xdim-1)));
+    const float yy = 3.0*(ymin+(ymax-ymin)*(1.0*y/(xdim-1)));
+    const float zz = 3.0*(zmin+(zmax-zmin)*(1.0*z/(xdim-1)));
+
+    const float v = (xx*xx*xx*xx - 5.0f*xx*xx + yy*yy*yy*yy - 5.0f*yy*yy + zz*zz*zz*zz - 5.0f*zz*zz + 11.8f) * 0.2f + 0.5f;
+
+    return v;
+  }
+};
+
+
 /// \brief Compute isosurface
 ///
 template <typename FieldType, typename OutputType>
@@ -356,7 +387,19 @@ public:
 
   vtkm::cont::ArrayHandle<vtkm::Vec<OutputType,3> > verticesArray, normalsArray;
 
-  void computeIsosurface(int dim, char* fileName, float isovalue)
+  template<typename T>
+  void OutputArrayDebug(T outputArray)
+  {
+    typedef typename T::ValueType ValueType;
+    typedef typename T::PortalConstControl PortalConstType;
+    PortalConstType readPortal = outputArray.GetPortalConstControl();
+    vtkm::cont::ArrayPortalToIterators<PortalConstType> iterators(readPortal);
+    std::vector<ValueType> result(readPortal.GetNumberOfValues());
+    std::copy(iterators.GetBegin(), iterators.GetEnd(), result.begin());
+    std::copy(result.begin(), result.end(), std::ostream_iterator<FieldType>(std::cout, " "));  std::cout << std::endl;
+  }
+
+  void computeIsosurface(int dim, float isovalue, char* fileName = 0)
   {
     // Initialize parameters; define min and max in x, y, and z for a uniform structured grid
     int vdim = dim + 1;  int dim3 = dim*dim*dim;
@@ -364,12 +407,23 @@ public:
     float mins[3] = {-1.0f, -1.0f, -1.0f};
     float maxs[3] = {1.0f, 1.0f, 1.0f};
 
-    // Read the field from a file
-    std::vector<FieldType> field;
-    std::fstream in(fileName, std::ios::in);
-    std::copy(std::istream_iterator<FieldType>(in), std::istream_iterator<FieldType>(), std::back_inserter(field));
-    std::copy(field.begin(), field.end(), std::ostream_iterator<FieldType>(std::cout, " "));  std::cout << std::endl;
-    vtkm::cont::ArrayHandle<FieldType> fieldArray = vtkm::cont::make_ArrayHandle(&field[0], field.size());
+    vtkm::cont::ArrayHandle<FieldType> fieldArray;
+    if (fileName != 0)
+    {
+      // Read the field from a file
+      std::vector<FieldType> field;
+      std::fstream in(fileName, std::ios::in);
+      std::copy(std::istream_iterator<FieldType>(in), std::istream_iterator<FieldType>(), std::back_inserter(field));
+      std::copy(field.begin(), field.end(), std::ostream_iterator<FieldType>(std::cout, " "));  std::cout << std::endl;
+      fieldArray = vtkm::cont::make_ArrayHandle(&field[0], field.size());
+    }
+    else
+    {
+      // Generate tangle field
+      vtkm::cont::ArrayHandleCounting<vtkm::Id> vertexCountImplicitArray(0, vdim*vdim*vdim);
+      vtkm::worklet::DispatcherMapField<TangleField> tangleFieldDispatcher(TangleField(vdims, mins, maxs));
+      tangleFieldDispatcher.Invoke(vertexCountImplicitArray, fieldArray);
+    }
 
     // Set up the Marching Cubes tables
     vtkm::cont::ArrayHandle<vtkm::Id> vertexTableArray = vtkm::cont::make_ArrayHandle(numVerticesTable, 256);
@@ -387,26 +441,23 @@ public:
     vtkm::cont::ArrayHandle<vtkm::Id> validCellEnumArray, validCellIndicesArray, validVerticesArray, outputVerticesEnumArray, successArray;
     vtkm::worklet::DispatcherMapField<IsValidCell> isValidCellDispatcher;
     isValidCellDispatcher.Invoke(caseInfoArray, validCellEnumArray);
-    vtkm::cont::DeviceAdapterAlgorithm<VTKM_DEFAULT_DEVICE_ADAPTER_TAG>::ScanInclusive(validCellEnumArray, validCellEnumArray);
+    unsigned int numValidCells = vtkm::cont::DeviceAdapterAlgorithm<VTKM_DEFAULT_DEVICE_ADAPTER_TAG>::ScanInclusive(validCellEnumArray, validCellEnumArray);
 
     // Return if no cells generate geometry
-    unsigned int numValidCells = validCellEnumArray.GetPortalConstControl().Get(validCellEnumArray.GetPortalConstControl().GetNumberOfValues()-1);
-    if (numValidCells == 0) return;
+    std::cout << "NumValidCells: " << numValidCells << std::endl;
+    if (numValidCells == 0) { render_enabled = false;  return; }
 
     // Use UpperBounds, a "permutation", and an exclusive scan to compute the starting output vertex index for each cell
     vtkm::cont::ArrayHandleCounting<vtkm::Id> validCellCountImplicitArray(0, numValidCells);
     vtkm::cont::DeviceAdapterAlgorithm<VTKM_DEFAULT_DEVICE_ADAPTER_TAG>::UpperBounds(validCellEnumArray, validCellCountImplicitArray, validCellIndicesArray);
     vtkm::worklet::DispatcherMapField<Permute> permuteDispatcher(Permute(2, caseInfoArray.PrepareForInput(DeviceAdapter())));
     permuteDispatcher.Invoke(validCellIndicesArray, validVerticesArray);
-    vtkm::cont::DeviceAdapterAlgorithm<VTKM_DEFAULT_DEVICE_ADAPTER_TAG>::ScanExclusive(validVerticesArray, outputVerticesEnumArray);
-
-    // Determine the total number of output vertices
-    int numTotalVertices = caseInfoArray.GetPortalConstControl().Get(validCellIndicesArray.GetPortalConstControl().Get(validCellIndicesArray.GetPortalConstControl().GetNumberOfValues()-1)).second +
-                           outputVerticesEnumArray.GetPortalConstControl().Get(outputVerticesEnumArray.GetPortalConstControl().GetNumberOfValues()-1);
+    int numTotalVertices = vtkm::cont::DeviceAdapterAlgorithm<VTKM_DEFAULT_DEVICE_ADAPTER_TAG>::ScanExclusive(validVerticesArray, outputVerticesEnumArray);
 
     // Call the IsosurfaceFunctor to actually compute all the output vertices, normals, and scalars
     vtkm::cont::ArrayHandle<OutputType> scalarsArray;
     vtkm::worklet::DispatcherMapField<IsosurfaceFunctorUniformGrid<FieldType, OutputType> > isosurfaceFunctorDispatcher(IsosurfaceFunctorUniformGrid<FieldType, OutputType>(isovalue, vdims, mins, maxs,
+                                                                                                       validCellIndicesArray.PrepareForInput(DeviceAdapter()),
                                                                                                        outputVerticesEnumArray.PrepareForInput(DeviceAdapter()),
                                                                                                        caseInfoArray.PrepareForInput(DeviceAdapter()),
                                                                                                        fieldArray.PrepareForInput(DeviceAdapter()),
@@ -415,7 +466,7 @@ public:
                                                                                                        verticesArray.PrepareForOutput(numTotalVertices, DeviceAdapter()),
                                                                                                        normalsArray.PrepareForOutput(numTotalVertices, DeviceAdapter()),
                                                                                                        scalarsArray.PrepareForOutput(numTotalVertices, DeviceAdapter())));
-    isosurfaceFunctorDispatcher.Invoke(validCellIndicesArray, successArray);
+    isosurfaceFunctorDispatcher.Invoke(validCellCountImplicitArray, successArray);
   }
 };
 
@@ -469,15 +520,18 @@ void displayCall()
 
   glColor3f(0.1f, 0.1f, 0.6f);
 
-  glBegin(GL_TRIANGLES);
-  for (unsigned int i=0; i<isosurfaceFilter->verticesArray.GetPortalConstControl().GetNumberOfValues(); i++)
+  if (render_enabled)
   {
-    vtkm::Vec<vtkm::Float32, 3> curNormal = isosurfaceFilter->normalsArray.GetPortalConstControl().Get(i);
-    vtkm::Vec<vtkm::Float32, 3> curVertex = isosurfaceFilter->verticesArray.GetPortalConstControl().Get(i);
-    glNormal3f(curNormal[0], curNormal[1], curNormal[2]);
-    glVertex3f(curVertex[0], curVertex[1], curVertex[2]);
+    glBegin(GL_TRIANGLES);
+    for (unsigned int i=0; i<isosurfaceFilter->verticesArray.GetPortalConstControl().GetNumberOfValues(); i++)
+    {
+      vtkm::Vec<vtkm::Float32, 3> curNormal = isosurfaceFilter->normalsArray.GetPortalConstControl().Get(i);
+      vtkm::Vec<vtkm::Float32, 3> curVertex = isosurfaceFilter->verticesArray.GetPortalConstControl().Get(i);
+      glNormal3f(curNormal[0], curNormal[1], curNormal[2]);
+      glVertex3f(curVertex[0], curVertex[1], curVertex[2]);
+    }
+    glEnd();
   }
-  glEnd();
 
   glPopMatrix();
   glutSwapBuffers();
@@ -532,15 +586,16 @@ std::string vec3String(const vtkm::Vec<vtkm::Float32,3>& data)
 int main(int argc, char* argv[])
 {
   // Abort if dimension and file name are not provided
-  if (argc < 4)
+  if (argc < 3)
   {
-    std::cout << "Usage: isosurface {dimension} {file-name} {isovalue}" << std::endl;
+    std::cout << "Usage: isosurface {dimension} {isovalue} {optional-file-name} " << std::endl;
     return 0;
   }
 
   // Create the filter and compute the isosurface
   isosurfaceFilter = new IsosurfaceFilterUniformGrid<vtkm::Float32, vtkm::Float32>();
-  isosurfaceFilter->computeIsosurface(atoi(argv[1]), argv[2], atof(argv[3]));
+  if (argc == 3) isosurfaceFilter->computeIsosurface(atoi(argv[1]), atof(argv[2]));
+  if (argc >= 4) isosurfaceFilter->computeIsosurface(atoi(argv[1]), atof(argv[2]), argv[3]);
 
   // Print the vertices
   // vtkm::cont::ArrayPortalToIterators<vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> >::PortalConstControl> testIterators(isosurfaceFilter->verticesArray.GetPortalConstControl());
