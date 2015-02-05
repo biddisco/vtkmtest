@@ -20,6 +20,7 @@
 
 #include <iostream>
 #include <fstream>
+#define _USE_MATH_DEFINES
 #include <math.h>
 
 #ifndef VTKM_DEVICE_ADAPTER
