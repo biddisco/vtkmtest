@@ -27,6 +27,12 @@
 # define VTKM_DEVICE_ADAPTER VTKM_DEVICE_ADAPTER_SERIAL
 #endif
 
+#define HPX_TIMING
+
+#ifdef HPX_TIMING
+# include <chrono>
+  std::size_t os_threads;
+#endif
 
 #include <vtkm/cont/DeviceAdapter.h>
 #include <vtkm/cont/ArrayHandle.h>
@@ -45,9 +51,15 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 #if defined (__APPLE__)
 # include <GLUT/glut.h>
 #else
-# include <GL/glut.h>
+# ifdef VTKM_USE_FREEGLUT
+#  include <GL/Freeglut.h>
+# else
+#  include <GL/glut.h>
+# endif
 #endif
 #include "quaternion.h"
+
+int WinId = 0;
 
 template <typename FieldType, typename OutputType>
 class IsosurfaceFilterUniformGrid;
@@ -73,7 +85,7 @@ template <typename T>
 VTKM_EXEC_EXPORT
 T normalize(T v)
 {
-  return ((1.0f / sqrt(vtkm::dot(v,v))) * v);
+  return v * (1.0f / sqrt(vtkm::dot(v,v)));
 }
 
 template< typename FieldType>
@@ -420,10 +432,23 @@ public:
     }
     else
     {
+#ifdef HPX_TIMING
+  // start timer
+  std::chrono::time_point<std::chrono::system_clock> start_tangle, end_tangle;
+  start_tangle = std::chrono::system_clock::now();
+#endif
       // Generate tangle field
       vtkm::cont::ArrayHandleCounting<vtkm::Id> vertexCountImplicitArray(0, vdim*vdim*vdim);
       vtkm::worklet::DispatcherMapField<TangleField> tangleFieldDispatcher(TangleField(vdims, mins, maxs));
       tangleFieldDispatcher.Invoke(vertexCountImplicitArray, fieldArray);
+#ifdef HPX_TIMING
+  // stop timer
+  end_tangle = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = end_tangle-start_tangle;
+  std::cout << "CSVData "             
+            << ", threads, "          << os_threads 
+            << ", tangle_time, " << elapsed_seconds.count() << std::endl;
+#endif
     }
 
     // Set up the Marching Cubes tables
@@ -452,8 +477,27 @@ public:
     vtkm::cont::ArrayHandleCounting<vtkm::Id> validCellCountImplicitArray(0, numValidCells);
     vtkm::cont::DeviceAdapterAlgorithm<VTKM_DEFAULT_DEVICE_ADAPTER_TAG>::UpperBounds(validCellEnumArray, validCellCountImplicitArray, validCellIndicesArray);
     vtkm::worklet::DispatcherMapField<Permute> permuteDispatcher(Permute(2, caseInfoArray.PrepareForInput(DeviceAdapter())));
+#ifdef HPX_TIMING
+  // start timer
+  std::chrono::time_point<std::chrono::system_clock> start_permute, end_permute;
+  start_permute = std::chrono::system_clock::now();
+#endif
     permuteDispatcher.Invoke(validCellIndicesArray, validVerticesArray);
+#ifdef HPX_TIMING
+  // stop timer
+  end_permute = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds2 = end_permute-start_permute;
+  std::cout << "CSVData "             
+            << ", threads, "          << os_threads 
+            << ", permute_time, " << elapsed_seconds2.count() << std::endl;
+#endif
     int numTotalVertices = vtkm::cont::DeviceAdapterAlgorithm<VTKM_DEFAULT_DEVICE_ADAPTER_TAG>::ScanExclusive(validVerticesArray, outputVerticesEnumArray);
+
+#ifdef HPX_TIMING
+  // start timer
+  std::chrono::time_point<std::chrono::system_clock> start_iso, end_iso;
+  start_iso = std::chrono::system_clock::now();
+#endif
 
     // Call the IsosurfaceFunctor to actually compute all the output vertices, normals, and scalars
     vtkm::cont::ArrayHandle<OutputType> scalarsArray;
@@ -468,6 +512,14 @@ public:
                                                                                                        normalsArray.PrepareForOutput(numTotalVertices, DeviceAdapter()),
                                                                                                        scalarsArray.PrepareForOutput(numTotalVertices, DeviceAdapter())));
     isosurfaceFunctorDispatcher.Invoke(validCellCountImplicitArray, successArray);
+#ifdef HPX_TIMING
+  // stop timer
+  end_iso = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds3 = end_iso-start_iso;
+  std::cout << "CSVData "             
+            << ", threads, "          << os_threads 
+            << ", isosurface_time, " << elapsed_seconds3.count() << std::endl;
+#endif
   }
 };
 
@@ -536,6 +588,7 @@ void displayCall()
 
   glPopMatrix();
   glutSwapBuffers();
+//  glutLeaveMainLoop();
 }
 
 
@@ -571,6 +624,17 @@ void mouseMove(int x, int y)
   glutPostRedisplay();
 }
 
+void keyboardCB( unsigned char key, int x, int y )
+{
+  switch ( key )
+  {
+    case 27: // Escape key
+      glutDestroyWindow ( WinId );
+      exit (0);
+      break;
+  }
+  glutPostRedisplay();
+}
 
 /// Print a vector
 ///
@@ -586,6 +650,9 @@ std::string vec3String(const vtkm::Vec<vtkm::Float32,3>& data)
 ///
 int main(int argc, char* argv[])
 {
+#if  VTKM_DEVICE_ADAPTER == VTKM_DEVICE_ADAPTER_HPX
+  os_threads = hpx::get_os_thread_count();
+#endif
   // Abort if dimension and file name are not provided
   if (argc < 3)
   {
@@ -609,13 +676,17 @@ int main(int argc, char* argv[])
   glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
   glutInitWindowSize(1000, 1000);
   glutInitWindowPosition(300, 200);
-  glutCreateWindow("VTK-m Isosurface");
+  WinId = glutCreateWindow("VTK-m Isosurface");
   initializeGL();
   glutDisplayFunc(displayCall);
   glutMotionFunc(mouseMove);
   glutMouseFunc(mouseCall);
-  glutMainLoop();
-
+  glutKeyboardFunc(keyboardCB);
+  #ifdef VTKM_USE_FREEGLUT
+    glutMainLoopEvent();
+  #else  
+    glutMainLoop();
+  #endif
   return 0;
 }
 
