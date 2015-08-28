@@ -43,6 +43,18 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/CMake/GitExternal.cmake)
 #set(BUILD_SHARED_LIBS ON)
 
 #--------------------------------------------------
+# Find VTKm
+#--------------------------------------------------
+#find_package(VTKm)
+if(WIN32)
+  include_directories("D:/Code/vtkm")
+  include_directories("D:/Build/vtkm")
+elseif(APPLE)
+  include_directories("/Users/biddisco/src/vtkm/")
+  include_directories("/Users/biddisco/build/vtkm/")
+endif()
+
+#--------------------------------------------------
 # Find OpenGL
 #--------------------------------------------------
 find_package(OpenGL)
@@ -87,19 +99,13 @@ if(NOT GLUT_FOUND)
   endif()
 ENDIF()
 
+#--------------------------------------------------
+# include dirs
+#--------------------------------------------------
 include_directories(
     ${Boost_INCLUDE_DIR}
     ${GLUT_INCLUDE_DIR}
 )
-
-if(WIN32)
-  include_directories("D:/Code/vtkm")
-  include_directories("D:/Build/vtkm")
-endif()
-if (MAC)
-  include_directories("/Users/biddisco/src/vtkm/")
-  include_directories("/Users/biddisco/build/vtkm/")
-endif()
 
 add_executable(isosurface isosurface.cpp)
 target_include_directories(isosurface PRIVATE ${GLUT_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR})
