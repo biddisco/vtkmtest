@@ -18,7 +18,7 @@
 //  this software.
 //============================================================================
 
-const int numVerticesTable[256] = {
+const vtkm::Id numVerticesTable[256] = {
     0,
     3,
     3,
@@ -278,7 +278,7 @@ const int numVerticesTable[256] = {
 };
 
 
-const int triTable[256*16] =
+const vtkm::Id triTable[256*16] =
 {
 #define X -1
      X, X, X, X, X, X, X, X, X, X, X, X, X, X, X, X,
