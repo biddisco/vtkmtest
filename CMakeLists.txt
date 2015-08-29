@@ -43,21 +43,23 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/CMake/GitExternal.cmake)
 #set(BUILD_SHARED_LIBS ON)
 
 #--------------------------------------------------
+# Find HPX
+#--------------------------------------------------
+find_package(HPX)
+include_directories(${HPX_INCLUDE_DIRS})
+
+#--------------------------------------------------
 # Find VTKm
 #--------------------------------------------------
-#find_package(VTKm)
-if(WIN32)
-  include_directories("D:/Code/vtkm")
-  include_directories("D:/Build/vtkm")
-elseif(APPLE)
-  include_directories("/Users/biddisco/src/vtkm/")
-  include_directories("/Users/biddisco/build/vtkm/")
-endif()
+find_package(VTKm)
 
 #--------------------------------------------------
 # Find OpenGL
 #--------------------------------------------------
 find_package(OpenGL)
+if (NOT OPENGL_GLU_FOUND)
+  message(error "Did not find GLU")
+endif()
 
 #--------------------------------------------------
 # Find Cuda
@@ -69,47 +71,64 @@ find_package(Cuda)
 #--------------------------------------------------
 find_package(Boost 1.55 REQUIRED)
 
-#--------------------------------------------------
-# Find GLUT
-#--------------------------------------------------
-find_package(GLUT)
-if(NOT GLUT_FOUND)
-  option(GLUT_DOWNLOAD_AS_SUBPROJECT OFF) 
-  if(GLUT_DOWNLOAD_AS_SUBPROJECT)
+# checkout master branch, but don't pull all the history
+Git_External(
+  ${CMAKE_CURRENT_SOURCE_DIR}/glfw
+  https://github.com/glfw/glfw.git
+  master
+  VERBOSE
+  SHALLOW
+)
 
-    # checkout master branch, but don't track it, verbose output
-    Git_External(
-        ${CMAKE_CURRENT_SOURCE_DIR}/freeglut
-        https://github.com/dcnieho/FreeGLUT.git
-        master
-        NO_UPDATE
-        VERBOSE
-    )
-    option(FREEGLUT_BUILD_DEMOS OFF "")
-    option(FREEGLUT_BUILD_SHARED_LIBS OFF "")
+#--------------------------------------------------
+# Find glfw
+#--------------------------------------------------
+#  option(GLUT_DOWNLOAD_AS_SUBPROJECT OFF)
+#  if(GLUT_DOWNLOAD_AS_SUBPROJECT)
+option(GLFW_BUILD_DOCS                  OFF "")
+option(GLFW_BUILD_EXAMPLES              OFF "")
+option(GLFW_BUILD_TESTS                 OFF "")
 
-    add_subdirectory(freeglut/freeglut/freeglut)
-    link_directories(${CMAKE_CURRENT_BINARY_DIR}/freeglut/freeglut/freeglut/lib)
-    add_definitions(-DFREEGLUT_STATIC)
-    set(GLUT_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/freeglut/freeglut/freeglut/include)
-    set(GLUT_LIBRARIES freeglut_static)
-  else()
-    message("GLUT was not found, set GLUT_DOWNLOAD_AS_SUBPROJECT ON "
-      "to download and build it as part of this project")
-  endif()
-ENDIF()
+add_subdirectory(glfw)
 
 #--------------------------------------------------
 # include dirs
 #--------------------------------------------------
 include_directories(
     ${Boost_INCLUDE_DIR}
-    ${GLUT_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/glfw/include
+    ${OPENGL_INCLUDE_DIR}
+    ${VTKm_INCLUDE_DIRS}
 )
-
+message("VTKM inc dir is ${VTKm_INCLUDE_DIRS}")
 add_executable(isosurface isosurface.cpp)
 target_include_directories(isosurface PRIVATE ${GLUT_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR})
-target_link_libraries(isosurface ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES})
+target_link_libraries(isosurface glfw ${GLFW_LIBRARIES})
 
-cuda_add_executable(cuda_isosurface isosurface.cu)
-target_link_libraries(cuda_isosurface ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES})
+if (VTKm_ENABLE_CUDA)
+  cuda_add_executable(cuda_isosurface isosurface.cu)
+  target_link_libraries(cuda_isosurface glfw ${GLFW_LIBRARIES})
+endif()
+
+if (VTKm_ENABLE_HPX)
+  add_definitions(-DBOOST_ALL_DYN_LINK)
+  link_directories(${Boost_LIBRARY_DIRS})
+  add_executable(hpx_isosurface isosurface_hpx.cpp)
+  target_link_libraries(hpx_isosurface
+    iostreams_component
+    ${Boost_LIBRARIES}
+    glfw
+    ${GLFW_LIBRARIES}
+  )
+  hpx_setup_target(hpx_isosurface)
+
+#  add_executable(hpx_compositor compositor_hpx.cpp)
+#  target_link_libraries(hpx_compositor ${OPENGL_LIBRARIES} ${GLFW_LIBRARIES})
+#  hpx_setup_target(hpx_compositor)
+#  target_link_libraries(hpx_compositor
+#    iostreams_component
+#    ${Boost_LIBRARIES}
+#  )
+endif()
+
+

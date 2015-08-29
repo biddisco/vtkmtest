@@ -49,14 +49,15 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 #include "isosurface.h"
 
 #if defined (__APPLE__)
-# include <GLUT/glut.h>
+# include <OpenGL/gl.h>
+# include <OpenGL/glu.h>
 #else
-# ifdef VTKM_USE_FREEGLUT
-#  include <GL/Freeglut.h>
-# else
-#  include <GL/glut.h>
-# endif
+# include <GL/gl.h>
+# include <GL/glu.h>
 #endif
+//
+#include <GLFW/glfw3.h>
+
 #include "quaternion.h"
 
 int WinId = 0;
@@ -105,7 +106,7 @@ public:
 ///
 Quaternion qrot;
 bool render_enabled = true;
-int lastx, lasty;
+double lastx, lasty;
 int mouse_state = 1;
 IsosurfaceFilterUniformGrid<vtkm::Float32, vtkm::Float32>* isosurfaceFilter;
 
@@ -364,8 +365,9 @@ public:
   typedef _2 ExecutionSignature(_1);
   typedef _1 InputDomain;
 
-  const int xdim, ydim, zdim, cellsPerLayer;
+  const int xdim, ydim, zdim;
   const float xmin, ymin, zmin, xmax, ymax, zmax;
+  const int cellsPerLayer;
 
   VTKM_CONT_EXPORT
   TangleField(const int dims[3], const float mins[3], const float maxs[3]) : xdim(dims[0]), ydim(dims[1]), zdim(dims[2]),
@@ -587,28 +589,48 @@ void displayCall()
   }
 
   glPopMatrix();
-  glutSwapBuffers();
-//  glutLeaveMainLoop();
+}
+
+// new window size
+void reshape( GLFWwindow* window, int width, int height )
+{
+  GLfloat h = (GLfloat) height / (GLfloat) width;
+  GLfloat xmax, znear, zfar;
+
+  znear = 5.0f;
+  zfar  = 30.0f;
+  xmax  = znear * 0.5f;
+
+  glViewport( 0, 0, (GLint) width, (GLint) height );
+  glMatrixMode( GL_PROJECTION );
+  glLoadIdentity();
+  glFrustum( -xmax, xmax, -xmax*h, xmax*h, znear, zfar );
+  glMatrixMode( GL_MODELVIEW );
+  glLoadIdentity();
+  glTranslatef( 0.0, 0.0, -20.0 );
 }
 
 
-/// Handle mouse button pushes
-///
-void mouseCall(int button, int state, int x, int y)
+// Handle mouse button pushes
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 {
-  if (button == 0) mouse_state = state;
-  if ((button == 0) && (state == 0)) { lastx = x;  lasty = y; }
+  if (button != GLFW_MOUSE_BUTTON_LEFT)
+    return;
+
+  if (action == GLFW_PRESS)
+  {
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwGetCursorPos(window, &lastx, &lasty);
+  }
+  else
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 
-
-/// Handle mouse movements to rotate the object using quaternions
-///
-void mouseMove(int x, int y)
+void cursor_position_callback(GLFWwindow* window, double x, double y)
 {
-  int dx = x - lastx;
-  int dy = y - lasty;
-
-  if (mouse_state == 0)
+  double dx = x - lastx;
+  double dy = y - lasty;
+  if (glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
   {
     Quaternion newRotX;
     newRotX.setEulerAngles(-0.2*dx*M_PI/180.0, 0.0, 0.0);
@@ -620,24 +642,22 @@ void mouseMove(int x, int y)
   }
   lastx = x;
   lasty = y;
-
-  glutPostRedisplay();
 }
 
-void keyboardCB( unsigned char key, int x, int y )
+void key( GLFWwindow* window, int k, int s, int action, int mods )
 {
-  switch ( key )
-  {
-    case 27: // Escape key
-      glutDestroyWindow ( WinId );
-      exit (0);
-      break;
-  }
-  glutPostRedisplay();
-}
+  if( action != GLFW_PRESS ) return;
 
-/// Print a vector
-///
+  switch (k) {
+    case GLFW_KEY_ESCAPE:
+      glfwSetWindowShouldClose(window, GL_TRUE);
+      break;
+    default:
+      return;
+  }
+}
+// Print a vector
+//
 std::string vec3String(const vtkm::Vec<vtkm::Float32,3>& data)
 {
   std::ostringstream str;
@@ -645,13 +665,16 @@ std::string vec3String(const vtkm::Vec<vtkm::Float32,3>& data)
   return str.str();
 }
 
-
-/// Compute an isosurface, and render it using GLUT
-///
-int main(int argc, char* argv[])
+//----------------------------------------------------------------------------
+//
+// Compute an isosurface
+//
+//----------------------------------------------------------------------------
+int init_pipeline(int argc, char* argv[])
 {
-#if  VTKM_DEVICE_ADAPTER == VTKM_DEVICE_ADAPTER_HPX
+#if VTKM_DEVICE_ADAPTER == VTKM_DEVICE_ADAPTER_HPX
   os_threads = hpx::get_os_thread_count();
+  std::cout << "Running HPX with threadcount " << os_threads << std::endl;
 #endif
   // Abort if dimension and file name are not provided
   if (argc < 3)
@@ -669,25 +692,106 @@ int main(int argc, char* argv[])
   // vtkm::cont::ArrayPortalToIterators<vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> >::PortalConstControl> testIterators(isosurfaceFilter->verticesArray.GetPortalConstControl());
   // std::transform(testIterators.GetBegin(), testIterators.GetEnd(), std::ostream_iterator<std::string>(std::cout, " "), vec3String);
   // std::cout << std::endl;
-
-  // Launch GLUT to render the resulting isosurface
-  lastx = lasty = 0;
-  glutInit(&argc, argv);
-  glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
-  glutInitWindowSize(1000, 1000);
-  glutInitWindowPosition(300, 200);
-  WinId = glutCreateWindow("VTK-m Isosurface");
-  initializeGL();
-  glutDisplayFunc(displayCall);
-  glutMotionFunc(mouseMove);
-  glutMouseFunc(mouseCall);
-  glutKeyboardFunc(keyboardCB);
-  #ifdef VTKM_USE_FREEGLUT
-    glutMainLoopEvent();
-  #else  
-    glutMainLoop();
-  #endif
   return 0;
 }
 
+//----------------------------------------------------------------------------
+//
+// create a glfw window, must be run on main OS thread AFAICT
+//
+//----------------------------------------------------------------------------
+GLFWwindow *init_glfw()
+{
+  GLFWwindow* window;
+  int width, height;
+
+  if( !glfwInit() )
+  {
+    fprintf( stderr, "Failed to initialize GLFW\n" );
+    exit( EXIT_FAILURE );
+  }
+
+  glfwWindowHint(GLFW_DEPTH_BITS, 16);
+
+  window = glfwCreateWindow( 800, 800, "vtkm-test", NULL, NULL );
+  if (!window)
+  {
+    fprintf( stderr, "Failed to open GLFW window\n" );
+    glfwTerminate();
+    exit( EXIT_FAILURE );
+  }
+
+  // Set callback functions
+  glfwSetFramebufferSizeCallback(window, reshape);
+  glfwSetKeyCallback(window, key);
+  glfwSetMouseButtonCallback(window, mouse_button_callback);
+  glfwSetCursorPosCallback(window, cursor_position_callback);
+
+  glfwMakeContextCurrent(window);
+  glfwSwapInterval( 1 );
+
+  glfwGetFramebufferSize(window, &width, &height);
+  reshape(window, width, height);
+  initializeGL();
+
+  return window;
+
+}
+
+//----------------------------------------------------------------------------
+//
+// interactive render loop, must be run on main OS thread AFAICT
+//
+//----------------------------------------------------------------------------
+void run_graphics_loop(GLFWwindow* window)
+{
+  // Main loop
+  while( !glfwWindowShouldClose(window) )
+  {
+    // Draw scene
+    displayCall();
+
+    // Swap buffers
+    glfwSwapBuffers(window);
+    glfwPollEvents();
+  }
+
+  // Terminate GLFW
+  glfwTerminate();
+}
+
+#if VTKM_DEVICE_ADAPTER == VTKM_DEVICE_ADAPTER_HPX
+int main(int argc, char **argv)
+{
+  {
+    // setup all the pipeline stuff and wait till it's done
+    hpx::future<int> init_p = hpx::async(init_pipeline, argc, argv);
+    init_p.wait();
+
+    // Get a reference to one of the main OS threads
+    hpx::threads::executors::main_pool_executor scheduler;
+
+    // create gui on OS thread
+    hpx::future<GLFWwindow*> init_g = hpx::async(scheduler, init_glfw);
+    GLFWwindow *window = init_g.get();
+
+    // run graphics loop on OS thread
+    hpx::future<void> loop = hpx::async(scheduler, run_graphics_loop, window);
+
+    // can do something else while loop is executing in the background ...
+    loop.wait();
+  }
+  return hpx::finalize();
+}
+
+#else
+int main(int argc, char **argv)
+{
+  // setup all the pipeline stuff and wait till it's done
+  init_pipeline(argc, argv);
+  GLFWwindow *window = init_glfw();
+  run_graphics_loop(window);
+  return 0;
+}
+#endif
 
