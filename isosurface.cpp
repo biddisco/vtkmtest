@@ -56,11 +56,7 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 # include <GL/glu.h>
 #endif
 //
-#include <GLFW/glfw3.h>
-
-#include "quaternion.h"
-
-int WinId = 0;
+#include "display.cpp"
 
 template <typename FieldType, typename OutputType>
 class IsosurfaceFilterUniformGrid;
@@ -104,10 +100,6 @@ public:
 
 /// Global variables
 ///
-Quaternion qrot;
-bool render_enabled = true;
-double lastx, lasty;
-int mouse_state = 1;
 IsosurfaceFilterUniformGrid<vtkm::Float32, vtkm::Float32>* isosurfaceFilter;
 
 
@@ -525,137 +517,6 @@ public:
   }
 };
 
-
-/// Initialize OpenGL parameters, including lighting
-///
-void initializeGL()
-{
-  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-  glEnable(GL_DEPTH_TEST);
-  glShadeModel(GL_SMOOTH);
-
-  float white[] = { 0.8, 0.8, 0.8, 1.0 };
-  float black[] = { 0.0, 0.0, 0.0, 1.0 };
-  float lightPos[] = { 10.0, 10.0, 10.5, 1.0 };
-
-  glLightfv(GL_LIGHT0, GL_AMBIENT, white);
-  glLightfv(GL_LIGHT0, GL_DIFFUSE, white);
-  glLightfv(GL_LIGHT0, GL_SPECULAR, black);
-  glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
-
-  glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, 1);
-
-  glEnable(GL_LIGHTING);
-  glEnable(GL_LIGHT0);
-  glEnable(GL_NORMALIZE);
-  glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
-  glEnable(GL_COLOR_MATERIAL);
-}
-
-
-/// Render the computed triangles
-///
-void displayCall()
-{
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  glEnable(GL_DEPTH_TEST);
-
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluPerspective( 45.0f, 1.0f, 1.0f, 20.0f);
-
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  gluLookAt(0.0f, 0.0f, 3.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-
-  glPushMatrix();
-  float rotationMatrix[16];
-  qrot.getRotMat(rotationMatrix);
-  glMultMatrixf(rotationMatrix);
-
-  glColor3f(0.1f, 0.1f, 0.6f);
-
-  if (render_enabled)
-  {
-    glBegin(GL_TRIANGLES);
-    for (unsigned int i=0; i<isosurfaceFilter->verticesArray.GetPortalConstControl().GetNumberOfValues(); i++)
-    {
-      vtkm::Vec<vtkm::Float32, 3> curNormal = isosurfaceFilter->normalsArray.GetPortalConstControl().Get(i);
-      vtkm::Vec<vtkm::Float32, 3> curVertex = isosurfaceFilter->verticesArray.GetPortalConstControl().Get(i);
-      glNormal3f(curNormal[0], curNormal[1], curNormal[2]);
-      glVertex3f(curVertex[0], curVertex[1], curVertex[2]);
-    }
-    glEnd();
-  }
-
-  glPopMatrix();
-}
-
-// new window size
-void reshape( GLFWwindow* window, int width, int height )
-{
-  GLfloat h = (GLfloat) height / (GLfloat) width;
-  GLfloat xmax, znear, zfar;
-
-  znear = 5.0f;
-  zfar  = 30.0f;
-  xmax  = znear * 0.5f;
-
-  glViewport( 0, 0, (GLint) width, (GLint) height );
-  glMatrixMode( GL_PROJECTION );
-  glLoadIdentity();
-  glFrustum( -xmax, xmax, -xmax*h, xmax*h, znear, zfar );
-  glMatrixMode( GL_MODELVIEW );
-  glLoadIdentity();
-  glTranslatef( 0.0, 0.0, -20.0 );
-}
-
-
-// Handle mouse button pushes
-void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
-{
-  if (button != GLFW_MOUSE_BUTTON_LEFT)
-    return;
-
-  if (action == GLFW_PRESS)
-  {
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    glfwGetCursorPos(window, &lastx, &lasty);
-  }
-  else
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-}
-
-void cursor_position_callback(GLFWwindow* window, double x, double y)
-{
-  double dx = x - lastx;
-  double dy = y - lasty;
-  if (glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
-  {
-    Quaternion newRotX;
-    newRotX.setEulerAngles(-0.2*dx*M_PI/180.0, 0.0, 0.0);
-    qrot.mul(newRotX);
-
-    Quaternion newRotY;
-    newRotY.setEulerAngles(0.0, 0.0, -0.2*dy*M_PI/180.0);
-    qrot.mul(newRotY);
-  }
-  lastx = x;
-  lasty = y;
-}
-
-void key( GLFWwindow* window, int k, int s, int action, int mods )
-{
-  if( action != GLFW_PRESS ) return;
-
-  switch (k) {
-    case GLFW_KEY_ESCAPE:
-      glfwSetWindowShouldClose(window, GL_TRUE);
-      break;
-    default:
-      return;
-  }
-}
 // Print a vector
 //
 std::string vec3String(const vtkm::Vec<vtkm::Float32,3>& data)
@@ -695,71 +556,6 @@ int init_pipeline(int argc, char* argv[])
   return 0;
 }
 
-//----------------------------------------------------------------------------
-//
-// create a glfw window, must be run on main OS thread AFAICT
-//
-//----------------------------------------------------------------------------
-GLFWwindow *init_glfw()
-{
-  GLFWwindow* window;
-  int width, height;
-
-  if( !glfwInit() )
-  {
-    fprintf( stderr, "Failed to initialize GLFW\n" );
-    exit( EXIT_FAILURE );
-  }
-
-  glfwWindowHint(GLFW_DEPTH_BITS, 16);
-
-  window = glfwCreateWindow( 800, 800, "vtkm-test", NULL, NULL );
-  if (!window)
-  {
-    fprintf( stderr, "Failed to open GLFW window\n" );
-    glfwTerminate();
-    exit( EXIT_FAILURE );
-  }
-
-  // Set callback functions
-  glfwSetFramebufferSizeCallback(window, reshape);
-  glfwSetKeyCallback(window, key);
-  glfwSetMouseButtonCallback(window, mouse_button_callback);
-  glfwSetCursorPosCallback(window, cursor_position_callback);
-
-  glfwMakeContextCurrent(window);
-  glfwSwapInterval( 1 );
-
-  glfwGetFramebufferSize(window, &width, &height);
-  reshape(window, width, height);
-  initializeGL();
-
-  return window;
-
-}
-
-//----------------------------------------------------------------------------
-//
-// interactive render loop, must be run on main OS thread AFAICT
-//
-//----------------------------------------------------------------------------
-void run_graphics_loop(GLFWwindow* window)
-{
-  // Main loop
-  while( !glfwWindowShouldClose(window) )
-  {
-    // Draw scene
-    displayCall();
-
-    // Swap buffers
-    glfwSwapBuffers(window);
-    glfwPollEvents();
-  }
-
-  // Terminate GLFW
-  glfwTerminate();
-}
-
 #if VTKM_DEVICE_ADAPTER == VTKM_DEVICE_ADAPTER_HPX
 int main(int argc, char **argv)
 {
@@ -772,11 +568,18 @@ int main(int argc, char **argv)
     hpx::threads::executors::main_pool_executor scheduler;
 
     // create gui on OS thread
-    hpx::future<GLFWwindow*> init_g = hpx::async(scheduler, init_glfw);
+    hpx::future<GLFWwindow*> init_g = hpx::async(scheduler, init_glfw, 800, 800);
     GLFWwindow *window = init_g.get();
 
+    typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > vertextype;
+    typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
+
+    std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
+                                              isosurfaceFilter->verticesArray,
+                                              isosurfaceFilter->normalsArray);
+
     // run graphics loop on OS thread
-    hpx::future<void> loop = hpx::async(scheduler, run_graphics_loop, window);
+    hpx::future<void> loop = hpx::async(scheduler, &run_graphics_loop, window, display_function);
 
     // can do something else while loop is executing in the background ...
     loop.wait();
@@ -789,8 +592,15 @@ int main(int argc, char **argv)
 {
   // setup all the pipeline stuff and wait till it's done
   init_pipeline(argc, argv);
-  GLFWwindow *window = init_glfw();
-  run_graphics_loop(window);
+  GLFWwindow *window = init_glfw(800,800);
+  typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > vertextype;
+  typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
+
+  std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
+                                                     isosurfaceFilter->verticesArray,
+                                                     isosurfaceFilter->normalsArray);
+  
+  run_graphics_loop(window, display_function);
   return 0;
 }
 #endif
