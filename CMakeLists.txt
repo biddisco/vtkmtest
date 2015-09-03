@@ -20,6 +20,18 @@
 cmake_minimum_required(VERSION 3.0.0)
 
 #--------------------------------------------------
+# cmake policies
+# see http://www.cmake.org/cmake/help/v2.8.12/cmake.html#section_Policies
+#--------------------------------------------------
+foreach(p
+    CMP0003 CMP0017 CMP0023 CMP0042
+    )
+  if(POLICY ${p})
+    cmake_policy(SET ${p} NEW)
+  endif()
+endforeach()
+
+#--------------------------------------------------
 # Setup Output directories
 #--------------------------------------------------
 SET (CMAKE_RUNTIME_OUTPUT_DIRECTORY
@@ -69,66 +81,94 @@ find_package(Cuda)
 #--------------------------------------------------
 # Find Boost
 #--------------------------------------------------
-find_package(Boost 1.55 REQUIRED)
+set(Boost_ADDITIONAL_VERSIONS
+  ${Boost_ADDITIONAL_VERSIONS}
+  "1.59.0" "1.59"
+  "1.58.0" "1.58"
+  "1.57.0" "1.57")
 
-# checkout master branch, but don't pull all the history
-Git_External(
-  ${CMAKE_CURRENT_SOURCE_DIR}/glfw
-  https://github.com/glfw/glfw.git
-  master
-  VERBOSE
-  SHALLOW
+find_package(Boost
+  1.55
+  REQUIRED
+  COMPONENTS
+    atomic chrono date_time filesystem program_options regex system thread
 )
 
 #--------------------------------------------------
-# Find glfw
+# Find GLFW
 #--------------------------------------------------
-#  option(GLUT_DOWNLOAD_AS_SUBPROJECT OFF)
-#  if(GLUT_DOWNLOAD_AS_SUBPROJECT)
-option(GLFW_BUILD_DOCS                  OFF "")
-option(GLFW_BUILD_EXAMPLES              OFF "")
-option(GLFW_BUILD_TESTS                 OFF "")
+find_package(GLFW QUIET)
+if(NOT GLFW_FOUND)
+  option(GLFW_DOWNLOAD_AS_SUBPROJECT ON)
+  if(GLFW_DOWNLOAD_AS_SUBPROJECT)
+      #--------------------------------------------------
+      # Checkout tip of GLFW repository
+      #--------------------------------------------------
+      Git_External(
+        ${CMAKE_CURRENT_SOURCE_DIR}/glfw
+        https://github.com/glfw/glfw.git
+        master
+        VERBOSE
+        SHALLOW
+      )
 
-add_subdirectory(glfw)
+      option(GLFW_BUILD_DOCS                  OFF "")
+      option(GLFW_BUILD_EXAMPLES              OFF "")
+      option(GLFW_BUILD_TESTS                 OFF "")
+
+      add_subdirectory(glfw)
+      set(GLFW_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/glfw/include)
+    endif()
+endif()
 
 #--------------------------------------------------
 # include dirs
 #--------------------------------------------------
 include_directories(
     ${Boost_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/glfw/include
+    ${GLFW_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
     ${VTKm_INCLUDE_DIRS}
 )
-message("VTKM inc dir is ${VTKm_INCLUDE_DIRS}")
-add_executable(isosurface isosurface.cpp)
-target_include_directories(isosurface PRIVATE ${GLUT_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR})
-target_link_libraries(isosurface glfw ${GLFW_LIBRARIES})
 
-if (VTKm_ENABLE_CUDA)
-  cuda_add_executable(cuda_isosurface isosurface.cu)
-  target_link_libraries(cuda_isosurface glfw ${GLFW_LIBRARIES})
-endif()
+#--------------------------------------------------
+# libs
+#--------------------------------------------------
+set(TEST_LIBS
+  glfw ${GLFW_LIBRARIES}
+)
 
-if (VTKm_ENABLE_HPX)
-  add_definitions(-DBOOST_ALL_DYN_LINK)
-  link_directories(${Boost_LIBRARY_DIRS})
-  add_executable(hpx_isosurface isosurface_hpx.cpp)
-  target_link_libraries(hpx_isosurface
-    iostreams_component
-    ${Boost_LIBRARIES}
-    glfw
-    ${GLFW_LIBRARIES}
-  )
-  hpx_setup_target(hpx_isosurface)
+#--------------------------------------------------
+# tests to compile
+#--------------------------------------------------
+set(TESTS
+  isosurface
+  gaussian_splatter
+)
 
-#  add_executable(hpx_compositor compositor_hpx.cpp)
-#  target_link_libraries(hpx_compositor ${OPENGL_LIBRARIES} ${GLFW_LIBRARIES})
-#  hpx_setup_target(hpx_compositor)
-#  target_link_libraries(hpx_compositor
-#    iostreams_component
-#    ${Boost_LIBRARIES}
-#  )
-endif()
+#--------------------------------------------------
+# normal, cuda, hpx versions
+#--------------------------------------------------
+foreach(test ${TESTS})
+  add_executable(${test} ${test}.cpp)
+  target_link_libraries(${test} ${TEST_LIBS})
 
+  if (VTKm_ENABLE_CUDA)
+    cuda_add_executable(cuda_${test} ${test}.cu)
+    target_link_libraries(cuda_${test} ${TEST_LIBS})
+  endif()
 
+  if (VTKm_ENABLE_HPX)
+    add_executable(hpx_${test} ${test}_hpx.cpp)
+    target_link_libraries(hpx_${test}
+      iostreams_component
+      ${Boost_LIBRARIES}
+      ${TEST_LIBS}
+    )
+    if (NOT Boost_USE_STATIC_LIBS)
+      target_compile_definitions(hpx_${test} PUBLIC BOOST_ALL_DYN_LINK)
+    endif()
+    hpx_setup_target(hpx_${test})
+  endif()
+
+endforeach(test)
