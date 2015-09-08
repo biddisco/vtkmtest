@@ -66,6 +66,10 @@
 //that is the chosen device tag
 typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 
+#ifdef _WIN32
+# include "windows.h""
+#endif
+
 #include "isosurface.h"
 
 #if defined (__APPLE__)
