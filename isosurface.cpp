@@ -110,34 +110,6 @@ public:
   }
 };
 
-vtkm::cont::DataSet MakeIsosurfaceTestDataSet(vtkm::Id3 dims)
-{
-  vtkm::cont::DataSet dataSet;
-
-  const vtkm::Id3 vdims(dims[0] + 1, dims[1] + 1, dims[2] + 1);
-
-  float mins[3] = { -1.0f, -1.0f, -1.0f };
-  float maxs[3] = { 1.0f, 1.0f, 1.0f };
-
-  vtkm::cont::ArrayHandle<vtkm::Float32> fieldArray;
-  vtkm::cont::ArrayHandleCounting<vtkm::Id> vertexCountImplicitArray(0, vdims[0] * vdims[1] * vdims[2]);
-  vtkm::worklet::DispatcherMapField<TangleField> tangleFieldDispatcher(TangleField(vdims, mins, maxs));
-  tangleFieldDispatcher.Invoke(vertexCountImplicitArray, fieldArray);
-
-  vtkm::cont::ArrayHandleUniformPointCoordinates coordinates(vdims);
-  dataSet.AddCoordinateSystem(
-    vtkm::cont::CoordinateSystem("coordinates", 1, coordinates));
-
-  dataSet.AddField(vtkm::cont::Field("nodevar", 1, vtkm::cont::Field::ASSOC_POINTS, fieldArray));
-
-  static const vtkm::IdComponent ndim = 3;
-  vtkm::cont::CellSetStructured<ndim> cellSet("cells");
-  cellSet.SetPointDimensions(vdims);
-  dataSet.AddCellSet(cellSet);
-
-  return dataSet;
-}
-
 //----------------------------------------------------------------------------
 // Empty Dataset
 //----------------------------------------------------------------------------
@@ -145,16 +117,13 @@ vtkm::cont::DataSet MakeEmptyVolumeDataset(vtkm::Id3 dims, const floatVec &origi
 {
   vtkm::cont::DataSet dataSet;
 
-  const vtkm::Id3 vdims(dims[0] + 1, dims[1] + 1, dims[2] + 1);
+  const vtkm::Id3 vdims(dims[0]+1, dims[1]+1, dims[2]+1);
 
   vtkm::cont::ArrayHandle<vtkm::Float32> fieldArray;
 
-  vtkm::cont::ArrayHandleUniformPointCoordinates coordinates(vdims);
+  vtkm::cont::ArrayHandleUniformPointCoordinates coordinates(vdims, origin, spacing);
   dataSet.AddCoordinateSystem(
     vtkm::cont::CoordinateSystem("coordinates", 1, coordinates));
-
-  dataSet.AddCoordinateSystem(
-    vtkm::cont::CoordinateSystem("coordinates", 1, dims, origin, spacing));
 
   static const vtkm::IdComponent ndim = 3;
   vtkm::cont::CellSetStructured<ndim> cellSet("cells");
@@ -162,16 +131,6 @@ vtkm::cont::DataSet MakeEmptyVolumeDataset(vtkm::Id3 dims, const floatVec &origi
   dataSet.AddCellSet(cellSet);
 
   return dataSet;
-}
-
-//----------------------------------------------------------------------------
-// Print a vector
-//----------------------------------------------------------------------------
-std::string vec3String(const vtkm::Vec<vtkm::Float32,3>& data)
-{
-  std::ostringstream str;
-  str << "(" << data[0] << ", " << data[1] << ", " << data[2] << ")";
-  return str.str();
 }
 
 //----------------------------------------------------------------------------
@@ -192,26 +151,29 @@ int init_pipeline(int argc, char* argv[])
 
   //
   // get command line values
+  // NB. Cell dimension is dim, points are dim+1 in each dimension
   //
   int dim = atoi(argv[1]);
   float isovalue = atof(argv[2]);
   const char *fileName = argc>=4 ? argv[3] : nullptr;
   //
-  int vertex_dims = dim ;
-  //
   const vtkm::Id3 dims(dim, dim, dim);
+  const vtkm::Id3 vdims(dim+1, dim+1, dim+1);
+  const floatVec origin(0.0, 0.0, 0.0);
+  const floatVec spacing(1.0, 1.0, 1.0);
+
+  // min and max for tangle field
   float mins[3] = { -1.0f, -1.0f, -1.0f };
   float maxs[3] = { 1.0f, 1.0f, 1.0f };
 
   //
-  // Initialize parameters; define min and max in x, y, and z for a uniform structured grid
-  //
-  const vtkm::Id3 vdims(dim+1, dim+1, dim+1);
-  const floatVec origin(0.0, 0.0, 0.0);
-  const floatVec spacing(1.0, 1.0, 1.0);
+  // Create a volume, specify how many cells in each dim
   //
   vtkm::cont::DataSet dataSet = MakeEmptyVolumeDataset(dims, origin, spacing);
-//  MakeIsosurfaceTestDataSet
+
+  //
+  // create a field for isosurfacing
+  //
   vtkm::cont::ArrayHandle<FieldType> fieldArray;
   if (fileName != 0) {
     // Read the field from a file
@@ -227,7 +189,7 @@ int init_pipeline(int argc, char* argv[])
     std::chrono::time_point<std::chrono::system_clock> start_tangle, end_tangle;
     start_tangle = std::chrono::system_clock::now();
 #endif
-    // Generate tangle field
+    // Generate tangle field, N = num vertices for field evaluaition
     vtkm::cont::ArrayHandleCounting<vtkm::Id> vertexCountImplicitArray(0, vdims[0] * vdims[1] * vdims[2]);
     vtkm::worklet::DispatcherMapField<TangleField> tangleFieldDispatcher(TangleField(vdims, mins, maxs));
     tangleFieldDispatcher.Invoke(vertexCountImplicitArray, fieldArray);
@@ -241,9 +203,15 @@ int init_pipeline(int argc, char* argv[])
       << ", tangle_time, " << elapsed_seconds.count() << std::endl;
 #endif
   }
+
+  //
+  // add field to the dataset
+  //
   dataSet.AddField(vtkm::cont::Field("nodevar", 1, vtkm::cont::Field::ASSOC_POINTS, fieldArray));
 
-  // Create the filter and compute the isosurface
+  //
+  // Create isosurface filter, use cell dimensions to initialize
+  //
   isosurfaceFilter = new vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter>(dims, dataSet);
 
 #ifdef HPX_TIMING
@@ -252,6 +220,9 @@ int init_pipeline(int argc, char* argv[])
   start_iso = std::chrono::system_clock::now();
 #endif
 
+  //
+  // and compute the isosurface
+  //
   isosurfaceFilter->Run(isovalue,
     dataSet.GetField("nodevar").GetData(),
     verticesArray,
