@@ -135,7 +135,7 @@ include_directories(
 # libs
 #--------------------------------------------------
 set(TEST_LIBS
-  glfw ${GLFW_LIBRARIES}
+  glfw ${GLFW_LIBRARIES} ${OPENGL_glu_LIBRARY} 
 )
 
 #--------------------------------------------------
