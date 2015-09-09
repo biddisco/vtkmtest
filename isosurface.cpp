@@ -66,10 +66,9 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 typedef vtkm::FloatDefault FieldType;
 typedef vtkm::Vec<FieldType, 3> floatVec;
 
-//
+//----------------------------------------------------------------------------
 // Global variables
-//
-vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter>* isosurfaceFilter;
+//----------------------------------------------------------------------------
 vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32, 3> > verticesArray, normalsArray;
 vtkm::cont::ArrayHandle<vtkm::Float32> scalarsArray;
 
@@ -119,11 +118,8 @@ vtkm::cont::DataSet MakeEmptyVolumeDataset(vtkm::Id3 dims, const floatVec &origi
 
   const vtkm::Id3 vdims(dims[0]+1, dims[1]+1, dims[2]+1);
 
-  vtkm::cont::ArrayHandle<vtkm::Float32> fieldArray;
-
   vtkm::cont::ArrayHandleUniformPointCoordinates coordinates(vdims, origin, spacing);
-  dataSet.AddCoordinateSystem(
-    vtkm::cont::CoordinateSystem("coordinates", 1, coordinates));
+  dataSet.AddCoordinateSystem(vtkm::cont::CoordinateSystem("coordinates", 1, coordinates));
 
   static const vtkm::IdComponent ndim = 3;
   vtkm::cont::CellSetStructured<ndim> cellSet("cells");
@@ -212,7 +208,7 @@ int init_pipeline(int argc, char* argv[])
   //
   // Create isosurface filter, use cell dimensions to initialize
   //
-  isosurfaceFilter = new vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter>(dims, dataSet);
+  vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter> isosurfaceFilter(dims, dataSet);
 
 #ifdef HPX_TIMING
   // start timer
@@ -223,7 +219,7 @@ int init_pipeline(int argc, char* argv[])
   //
   // and compute the isosurface
   //
-  isosurfaceFilter->Run(isovalue,
+  isosurfaceFilter.Run(isovalue,
     dataSet.GetField("nodevar").GetData(),
     verticesArray,
     normalsArray,
@@ -240,7 +236,30 @@ int init_pipeline(int argc, char* argv[])
   return 0;
 }
 
-#if VTKM_DEVICE_ADAPTER == VTKM_DEVICE_ADAPTER_HPX
+#if VTKM_DEVICE_ADAPTER != VTKM_DEVICE_ADAPTER_HPX
+//----------------------------------------------------------------------------
+// standard int main() entry point
+//----------------------------------------------------------------------------
+int main(int argc, char **argv)
+{
+  // setup all the pipeline stuff and wait till it's done
+  init_pipeline(argc, argv);
+  GLFWwindow *window = init_glfw(800,800);
+  typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > vertextype;
+  typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
+
+  std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
+                                                     verticesArray,
+                                                     normalsArray);
+
+  run_graphics_loop(window, display_function);
+  return 0;
+}
+
+#else
+//----------------------------------------------------------------------------
+// an int main for HPX which runs filters on hpx threads, GUI on OS thread
+//----------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
   {
@@ -259,8 +278,8 @@ int main(int argc, char **argv)
     typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
 
     std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
-                                              verticesArray,
-                                              normalsArray);
+                                                       verticesArray,
+                                                       normalsArray);
 
     // run graphics loop on OS thread
     hpx::future<void> loop = hpx::async(scheduler, &run_graphics_loop, window, display_function);
@@ -271,21 +290,5 @@ int main(int argc, char **argv)
   return hpx::finalize();
 }
 
-#else
-int main(int argc, char **argv)
-{
-  // setup all the pipeline stuff and wait till it's done
-  init_pipeline(argc, argv);
-  GLFWwindow *window = init_glfw(800,800);
-  typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > vertextype;
-  typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
-
-  std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
-                                                     verticesArray,
-                                                     normalsArray);
-  
-  run_graphics_loop(window, display_function);
-  return 0;
-}
 #endif
 
