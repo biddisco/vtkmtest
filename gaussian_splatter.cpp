@@ -93,21 +93,6 @@ vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32, 3> > verticesArray, normalsArra
 vtkm::cont::ArrayHandle<vtkm::Float32> scalarsArray;
 
 //----------------------------------------------------------------------------
-// Dump an array to std::cout
-//----------------------------------------------------------------------------
-template<typename T>
-void OutputArrayDebug(T outputArray)
-{
-  typedef typename T::ValueType ValueType;
-  typedef typename T::PortalConstControl PortalConstType;
-  PortalConstType readPortal = outputArray.GetPortalConstControl();
-  vtkm::cont::ArrayPortalToIterators<PortalConstType> iterators(readPortal);
-  std::vector<ValueType> result(readPortal.GetNumberOfValues());
-  std::copy(iterators.GetBegin(), iterators.GetEnd(), result.begin());
-  std::copy(result.begin(), result.end(), std::ostream_iterator<FieldType>(std::cout, " "));  std::cout << std::endl;
-}
-
-//----------------------------------------------------------------------------
 // Empty Dataset
 //----------------------------------------------------------------------------
 vtkm::cont::DataSet MakeEmptyVolumeDataset(vtkm::Id3 dims, const floatVec &origin, const floatVec &spacing)
@@ -190,11 +175,9 @@ int init_pipeline(int argc, char* argv[])
   vtkm::cont::ArrayHandle<vtkm::Float64,VTKM_DEFAULT_STORAGE_TAG> zValues;
   zValues = vtkm::cont::make_ArrayHandle(zdata);
 
-  OutputArrayDebug<vtkm::cont::ArrayHandle<vtkm::Float64>>(xValues);
-  OutputArrayDebug<vtkm::cont::ArrayHandle<vtkm::Float64>>(yValues);
-  OutputArrayDebug<vtkm::cont::ArrayHandle<vtkm::Float64>>(zValues);
-
-
+  OutputArrayDebug(xValues, "x Values");
+  OutputArrayDebug(yValues, "y Values");
+  OutputArrayDebug(zValues, "z Values");
 
   vtkm::cont::ArrayHandle<vtkm::Id3, VTKM_DEFAULT_STORAGE_TAG> output_volume_points;
   vtkm::cont::ArrayHandle<vtkm::Float64> fieldArray;
