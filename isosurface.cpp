@@ -31,7 +31,24 @@
 
 #ifdef HPX_TIMING
 # include <chrono>
-  std::size_t os_threads;
+std::size_t os_threads;
+
+// start timer
+# define START_TIMER_BLOCK(name) \
+  std::chrono::time_point<std::chrono::system_clock> start_##name, end_##name; \
+  start_##name = std::chrono::system_clock::now();
+
+// stop timer
+# define END_TIMER_BLOCK(name) \
+  end_##name = std::chrono::system_clock::now(); \
+  std::chrono::duration<double> elapsed_##name = end_##name-start_##name; \
+  std::cout << "CSVData " \
+  << ", threads, "     << os_threads \
+  << ", " #name "_time, " << elapsed_##name.count() << std::endl;
+
+#else
+# define START_TIMER_BLOCK(name)
+# define END_TIMER_BLOCK(name)
 #endif
 
 #include <vtkm/cont/DeviceAdapter.h>
@@ -43,8 +60,7 @@
 #include <vtkm/worklet/IsosurfaceUniformGrid.h>
 #include <vtkm/Pair.h>
 
-//now that the device adapter is included set a global typedef
-//that is the chosen device tag
+// set a global typedef that is the chosen device tag
 typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 
 #ifdef _WIN32
@@ -180,24 +196,13 @@ int init_pipeline(int argc, char* argv[])
     fieldArray = vtkm::cont::make_ArrayHandle(&field[0], field.size());
   }
   else {
-#ifdef HPX_TIMING
-    // start timer
-    std::chrono::time_point<std::chrono::system_clock> start_tangle, end_tangle;
-    start_tangle = std::chrono::system_clock::now();
-#endif
+    START_TIMER_BLOCK(tangle)
+
     // Generate tangle field, N = num vertices for field evaluaition
     vtkm::cont::ArrayHandleCounting<vtkm::Id> vertexCountImplicitArray(0, vdims[0] * vdims[1] * vdims[2]);
     vtkm::worklet::DispatcherMapField<TangleField> tangleFieldDispatcher(TangleField(vdims, mins, maxs));
     tangleFieldDispatcher.Invoke(vertexCountImplicitArray, fieldArray);
 
-#ifdef HPX_TIMING
-    // stop timer
-    end_tangle = std::chrono::system_clock::now();
-    std::chrono::duration<double> elapsed_seconds = end_tangle - start_tangle;
-    std::cout << "CSVData "
-      << ", threads, " << os_threads
-      << ", tangle_time, " << elapsed_seconds.count() << std::endl;
-#endif
   }
 
   //
@@ -210,11 +215,7 @@ int init_pipeline(int argc, char* argv[])
   //
   vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter> isosurfaceFilter(dims, dataSet);
 
-#ifdef HPX_TIMING
-  // start timer
-  std::chrono::time_point<std::chrono::system_clock> start_iso, end_iso;
-  start_iso = std::chrono::system_clock::now();
-#endif
+  START_TIMER_BLOCK(isosurface)
 
   //
   // and compute the isosurface
@@ -225,14 +226,8 @@ int init_pipeline(int argc, char* argv[])
     normalsArray,
     scalarsArray);
 
-#ifdef HPX_TIMING
-  // stop timer
-  end_iso = std::chrono::system_clock::now();
-  std::chrono::duration<double> elapsed_seconds3 = end_iso - start_iso;
-  std::cout << "CSVData "
-    << ", threads, " << os_threads
-    << ", isosurface_time, " << elapsed_seconds3.count() << std::endl;
-#endif
+  END_TIMER_BLOCK(isosurface)
+  
   return 0;
 }
 
