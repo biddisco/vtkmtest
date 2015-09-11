@@ -137,7 +137,7 @@ int init_pipeline(int argc, char* argv[])
   //
   const vtkm::Id3 dims(dim, dim, dim);
   const vtkm::Id3 vdims(dim+1, dim+1, dim+1);
-  const floatVec origin(0.0, 0.0, 0.0);
+  const floatVec origin(-dim / 2.0, -dim / 2.0, -dim / 2.0);
   const floatVec spacing(1.0, 1.0, 1.0);
 
   //
@@ -145,65 +145,55 @@ int init_pipeline(int argc, char* argv[])
   //
   vtkm::cont::DataSet dataSet = MakeEmptyVolumeDataset(dims, origin, spacing);
 
-#ifdef HPX_TIMING
-  // start timer
-  std::chrono::time_point<std::chrono::system_clock> start_splat, end_splat;
-  start_splat = std::chrono::system_clock::now();
-#endif
+  START_TIMER_BLOCK(splatter)
 
   //
   // create a field by splatting particles into our volume
   //
-  const int num_particles = 500;
+  const int num_particles = 11;
   std::vector<double> xdata(num_particles), ydata(num_particles), zdata(num_particles);
+  std::vector<float>  rdata(num_particles);
   std::random_device rd;
   std::mt19937 gen(rd());
   // give the particles real world space positions inside the volume
-  std::uniform_real_distribution<> x_dis(origin[0], origin[0]+spacing[0]*dims[0]);
-  std::uniform_real_distribution<> y_dis(origin[1], origin[1]+spacing[1]*dims[1]);
-  std::uniform_real_distribution<> z_dis(origin[2], origin[2]+spacing[2]*dims[2]);
+  std::uniform_real_distribution<> x_dis(origin[0], origin[0] + spacing[0]*dims[0]);
+  std::uniform_real_distribution<> y_dis(origin[1], origin[1] + spacing[1]*dims[1]);
+  std::uniform_real_distribution<> z_dis(origin[2], origin[2] + spacing[2]*dims[2]);
+  // give each point a radius which is between 0 and 5 voxels wide for now
+  std::uniform_real_distribution<> radius(0.0, spacing[0]*1.0);
   std::generate(xdata.begin(), xdata.end(), [&]{return x_dis(gen);});
   std::generate(ydata.begin(), ydata.end(), [&]{return y_dis(gen);});
-  std::generate(zdata.begin(), zdata.end(), [&]{return z_dis(gen);});
+  std::generate(zdata.begin(), zdata.end(), [&] {return z_dis(gen); });
+  std::generate(rdata.begin(), rdata.end(), [&] {return radius(gen); });
+//  xdata[0] = 0.5;
+//  ydata[0] = 0.5;
+//  zdata[0] = 0.5;
+//  rdata[0] = 1.0;
 
   vtkm::cont::ArrayHandle<vtkm::Float64,VTKM_DEFAULT_STORAGE_TAG> xValues;
   xValues = vtkm::cont::make_ArrayHandle(xdata);
-
   vtkm::cont::ArrayHandle<vtkm::Float64,VTKM_DEFAULT_STORAGE_TAG> yValues;
   yValues = vtkm::cont::make_ArrayHandle(ydata);
-
   vtkm::cont::ArrayHandle<vtkm::Float64,VTKM_DEFAULT_STORAGE_TAG> zValues;
   zValues = vtkm::cont::make_ArrayHandle(zdata);
+  vtkm::cont::ArrayHandle<vtkm::Float32, VTKM_DEFAULT_STORAGE_TAG> rValues;
+  rValues = vtkm::cont::make_ArrayHandle(rdata);
 
   OutputArrayDebug(xValues, "x Values");
   OutputArrayDebug(yValues, "y Values");
   OutputArrayDebug(zValues, "z Values");
+  OutputArrayDebug(rValues, "Radii");
 
-  vtkm::cont::ArrayHandle<vtkm::Id3, VTKM_DEFAULT_STORAGE_TAG> output_volume_points;
-  vtkm::cont::ArrayHandle<vtkm::Float64> fieldArray;
+  vtkm::cont::ArrayHandle<vtkm::Float32> fieldArray;
 
-  vtkm::worklet::GaussianSplatter<DeviceAdapter> splatter;
-
-  //      vtkm::cont::ArrayHandle<vtkm::Float64> xbounds;
-  //      vtkm::cont::internal::ComputeBounds<DeviceAdapter>::DoCompute(xValues, xbounds);
-
-  //      internal::ComputeBounds<DeviceAdapterTag>::DoCompute(
-  //                                                           this->Data.ResetTypeList(TypeList()).ResetStorageList(StorageList()),
-  //                                                           this->Bounds);
-
+  vtkm::worklet::GaussianSplatterFilterUniformGrid<DeviceAdapter> splatter(dims, origin, spacing, dataSet);
 
   splatter.run<VTKM_DEFAULT_STORAGE_TAG, VTKM_DEFAULT_STORAGE_TAG>
-  (xValues, yValues, zValues, output_volume_points, fieldArray);
+    (xValues, yValues, zValues, rValues, fieldArray);
 
+  END_TIMER_BLOCK(splatter)
 
-#ifdef HPX_TIMING
-  // stop timer
-  end_splat = std::chrono::system_clock::now();
-  std::chrono::duration<double> elapsed_seconds = end_splat - start_splat;
-  std::cout << "CSVData "
-  << ", threads, " << os_threads
-  << ", tangle_time, " << elapsed_seconds.count() << std::endl;
-#endif
+  OutputArrayDebug(fieldArray, "fieldArray");
 
   //
   // add field to the dataset
@@ -215,29 +205,19 @@ int init_pipeline(int argc, char* argv[])
   //
   vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter> isosurfaceFilter(dims, dataSet);
 
-#ifdef HPX_TIMING
-  // start timer
-  std::chrono::time_point<std::chrono::system_clock> start_iso, end_iso;
-  start_iso = std::chrono::system_clock::now();
-#endif
+  START_TIMER_BLOCK(isosurface)
 
   //
   // and compute the isosurface
   //
   isosurfaceFilter.Run(isovalue,
-                        dataSet.GetField("nodevar").GetData(),
+                        dataSet.GetField("nodevar").GetData(),              
                         verticesArray,
                         normalsArray,
-                        scalarsArray);
+                        fieldArray);
 
-#ifdef HPX_TIMING
-  // stop timer
-  end_iso = std::chrono::system_clock::now();
-  std::chrono::duration<double> elapsed_seconds3 = end_iso - start_iso;
-  std::cout << "CSVData "
-  << ", threads, " << os_threads
-  << ", isosurface_time, " << elapsed_seconds3.count() << std::endl;
-#endif
+  END_TIMER_BLOCK(isosurface)
+
   return 0;
 }
 
