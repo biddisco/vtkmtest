@@ -89,6 +89,21 @@ void initializeGL()
 //----------------------------------------------------------------------------
 // Render the computed triangles
 //----------------------------------------------------------------------------
+void set_viewpoint(float v0, float v1, float v2, float dist)
+{
+  center[0] = v0;
+  center[1] = v1;
+  center[2] = v2;
+  eye[0] = center[0];
+  eye[1] = center[1];
+  eye[2] = center[2] + dist;
+  zNear = 0.1;
+  zFar  = center[2] + dist*2;
+}
+
+//----------------------------------------------------------------------------
+// Render the computed triangles
+//----------------------------------------------------------------------------
 template <typename vertextype, typename normaltype>
 void displayCall(vertextype v_array, normaltype n_array)
 {
@@ -101,7 +116,9 @@ void displayCall(vertextype v_array, normaltype n_array)
 
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  gluLookAt(eye[0],eye[1],eye[2],center[0],center[1],center[2],up[0],up[1],up[2]);
+  gluLookAt(eye[0],eye[1],eye[2],
+            center[0],center[1],center[2],
+            up[0],up[1],up[2]);
 
   glPushMatrix();
   float rotationMatrix[16];

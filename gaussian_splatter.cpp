@@ -28,7 +28,7 @@
 # define VTKM_DEVICE_ADAPTER VTKM_DEVICE_ADAPTER_SERIAL
 #endif
 
-#define HPX_TIMING
+//#define HPX_TIMING
 
 #ifdef HPX_TIMING
 # include <chrono>
@@ -59,7 +59,7 @@
 #include <vtkm/cont/Field.h>
 #include <vtkm/worklet/DispatcherMapField.h>
 #include <vtkm/worklet/WorkletMapField.h>
-#include <vtkm/worklet/GaussianSplatter.h>
+#include <vtkm/worklet/KernelSplatter.h>
 #include <vtkm/worklet/IsosurfaceUniformGrid.h>
 #include <vtkm/Pair.h>
 
@@ -91,6 +91,8 @@ typedef vtkm::Vec<FieldType, 3> floatVec;
 //----------------------------------------------------------------------------
 vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32, 3> > verticesArray, normalsArray;
 vtkm::cont::ArrayHandle<vtkm::Float32> scalarsArray;
+floatVec view_origin(0.0, 0.0, 0.0);
+float    view_dist = 10;
 
 //----------------------------------------------------------------------------
 // Empty Dataset
@@ -111,6 +113,7 @@ vtkm::cont::DataSet MakeEmptyVolumeDataset(vtkm::Id3 dims, const floatVec &origi
   
   return dataSet;
 }
+
 //----------------------------------------------------------------------------
 // Run our test
 //----------------------------------------------------------------------------
@@ -133,13 +136,19 @@ int init_pipeline(int argc, char* argv[])
   //
   int dim = atoi(argv[1]);
   float isovalue = atof(argv[2]);
-  const char *fileName = argc>=4 ? argv[3] : nullptr;
   //
   const vtkm::Id3 dims(dim, dim, dim);
   const vtkm::Id3 vdims(dim+1, dim+1, dim+1);
-  const floatVec origin(-dim / 2.0, -dim / 2.0, -dim / 2.0);
-  const floatVec spacing(1.0, 1.0, 1.0);
+  const floatVec fdim(dims[0], dims[1], dims[2]);
+  //
+  // shift origin so that volume is centred on {0,0,0}
+  const floatVec spacing(1, 1, 1);
+//  const floatVec origin(-spacing[0]*fdim[0]*0.5, -spacing[1]*fdim[1]*0.5, -spacing[2]*fdim[0]*0.5);
+  const floatVec origin(0.0, 0.0, 0.0);
 
+  // for our GL window
+  view_origin = origin; // static_cast<vtkm::FloatDefault>(0.5) * (fdim*spacing); // + static_cast<vtkm::FloatDefault>(0.5) * (fdim*spacing);
+  view_dist   = dims[0]/50.0;
   //
   // Create a volume, specify how many cells in each dim
   //
@@ -150,25 +159,26 @@ int init_pipeline(int argc, char* argv[])
   //
   // create a field by splatting particles into our volume
   //
-  const int num_particles = 11;
+  const int num_particles = 32;
   std::vector<double> xdata(num_particles), ydata(num_particles), zdata(num_particles);
   std::vector<float>  rdata(num_particles);
   std::random_device rd;
   std::mt19937 gen(rd());
   // give the particles real world space positions inside the volume
-  std::uniform_real_distribution<> x_dis(origin[0], origin[0] + spacing[0]*dims[0]);
-  std::uniform_real_distribution<> y_dis(origin[1], origin[1] + spacing[1]*dims[1]);
-  std::uniform_real_distribution<> z_dis(origin[2], origin[2] + spacing[2]*dims[2]);
+  std::uniform_real_distribution<> x_dis(origin[0], origin[0] + spacing[0]*fdim[0]);
+  std::uniform_real_distribution<> y_dis(origin[1], origin[1] + spacing[1]*fdim[1]);
+  std::uniform_real_distribution<> z_dis(origin[2], origin[2] + spacing[2]*fdim[2]);
   // give each point a radius which is between 0 and 5 voxels wide for now
-  std::uniform_real_distribution<> radius(0.0, spacing[0]*1.0);
+  std::uniform_real_distribution<> radius(0.0, spacing[0]*fdim[0]/5.0);
   std::generate(xdata.begin(), xdata.end(), [&]{return x_dis(gen);});
   std::generate(ydata.begin(), ydata.end(), [&]{return y_dis(gen);});
-  std::generate(zdata.begin(), zdata.end(), [&] {return z_dis(gen); });
-  std::generate(rdata.begin(), rdata.end(), [&] {return radius(gen); });
-//  xdata[0] = 0.5;
-//  ydata[0] = 0.5;
-//  zdata[0] = 0.5;
-//  rdata[0] = 1.0;
+  std::generate(zdata.begin(), zdata.end(), [&]{return z_dis(gen); });
+  std::generate(rdata.begin(), rdata.end(), [&]{return radius(gen); });
+  //
+//  xdata[0] = view_origin[0];
+//  ydata[0] = view_origin[1];
+//  zdata[0] = view_origin[2];
+//  rdata[0] = spacing[0]*dims[0]/4;
 
   vtkm::cont::ArrayHandle<vtkm::Float64,VTKM_DEFAULT_STORAGE_TAG> xValues;
   xValues = vtkm::cont::make_ArrayHandle(xdata);
@@ -179,10 +189,10 @@ int init_pipeline(int argc, char* argv[])
   vtkm::cont::ArrayHandle<vtkm::Float32, VTKM_DEFAULT_STORAGE_TAG> rValues;
   rValues = vtkm::cont::make_ArrayHandle(rdata);
 
-  OutputArrayDebug(xValues, "x Values");
-  OutputArrayDebug(yValues, "y Values");
-  OutputArrayDebug(zValues, "z Values");
-  OutputArrayDebug(rValues, "Radii");
+  vtkm::worklet::debug::OutputArrayDebug(xValues, "x Values");
+  vtkm::worklet::debug::OutputArrayDebug(yValues, "y Values");
+  vtkm::worklet::debug::OutputArrayDebug(zValues, "z Values");
+  vtkm::worklet::debug::OutputArrayDebug(rValues, "Radii");
 
   vtkm::cont::ArrayHandle<vtkm::Float32> fieldArray;
 
@@ -193,7 +203,7 @@ int init_pipeline(int argc, char* argv[])
 
   END_TIMER_BLOCK(splatter)
 
-  OutputArrayDebug(fieldArray, "fieldArray");
+  vtkm::worklet::debug::OutputArrayDebug(fieldArray, "fieldArray");
 
   //
   // add field to the dataset
@@ -214,7 +224,7 @@ int init_pipeline(int argc, char* argv[])
                         dataSet.GetField("nodevar").GetData(),              
                         verticesArray,
                         normalsArray,
-                        fieldArray);
+                        scalarsArray);
 
   END_TIMER_BLOCK(isosurface)
 
@@ -258,9 +268,11 @@ int main(int argc, char **argv)
 {
   // setup all the pipeline stuff and wait till it's done
   init_pipeline(argc, argv);
+  set_viewpoint(view_origin[0],view_origin[1],view_origin[2], view_dist);
   GLFWwindow *window = init_glfw(800, 800);
   typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > vertextype;
   typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
+
 
   std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
                                                      verticesArray,
