@@ -56,12 +56,51 @@ float up[3] = {0,1,0};
 float zoom=45;
 float aspect = 1.0;
 float zNear = 1.0;
-float zFar = 20.0;
+float zFar = 30.0;
+float min_coord[3] = {0,0,0};
+float max_coord[3] = {0.0001, 0.0001, 0.0001};
+
+//----------------------------------------------------------------------------
+// The cube has opposite corners at (0,0,0) and (1,1,1), which are black and
+// white respectively.  The x-axis is the red gradient, the y-axis is the
+// green gradient, and the z-axis is the blue gradient.  The cube's position
+// and colors are fixed.
+namespace Cube {
+
+  const int NUM_VERTICES = 8;
+  const int NUM_FACES = 6;
+
+  void draw() {
+
+    GLfloat vertices[NUM_VERTICES][3] = {
+      {min_coord[0], min_coord[1], min_coord[2]}, {min_coord[0], min_coord[1], max_coord[2]},
+      {min_coord[0], max_coord[1], min_coord[2]}, {min_coord[0], max_coord[1], max_coord[2]},
+
+      {max_coord[0], min_coord[1], min_coord[2]}, {max_coord[0], min_coord[1], max_coord[2]},
+      {max_coord[0], max_coord[1], min_coord[2]}, {max_coord[0], max_coord[1], max_coord[2]}};
+
+    GLint faces[NUM_FACES][4] = {
+      {1, 5, 7, 3}, {5, 4, 6, 7}, {4, 0, 2, 6},
+      {3, 7, 6, 2}, {0, 1, 3, 2}, {0, 4, 5, 1}};
+
+    GLfloat vertexColors[NUM_VERTICES][3] = {
+      {1.0, 1.0, 1.0}, {1.0, 0.0, 0.0}, {0.0, 1.0, 1.0}, {1.0, 1.0, 1.0},
+      {1.0, 1.0, 1.0}, {1.0, 1.0, 0.0}, {0.0, 1.0, 1.0}, {1.0, 1.0, 1.0}};
+
+    glBegin(GL_QUADS);
+    for (int i = 0; i < NUM_FACES; i++) {
+      for (int j = 0; j < 4; j++) {
+        glColor3fv((GLfloat*)&vertexColors[faces[i][j]]);
+        glVertex3iv((GLint*)&vertices[faces[i][j]]);
+      }
+    }
+    glEnd();
+  }
+}
 
 //----------------------------------------------------------------------------
 // Initialize OpenGL parameters, including lighting
 //----------------------------------------------------------------------------
-///
 void initializeGL()
 {
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -89,7 +128,7 @@ void initializeGL()
 //----------------------------------------------------------------------------
 // Render the computed triangles
 //----------------------------------------------------------------------------
-void set_viewpoint(float v0, float v1, float v2, float dist)
+void set_viewpoint(float v0, float v1, float v2, float dist, float mins[3], float maxs[3])
 {
   center[0] = v0;
   center[1] = v1;
@@ -99,6 +138,13 @@ void set_viewpoint(float v0, float v1, float v2, float dist)
   eye[2] = center[2] + dist;
   zNear = 0.1;
   zFar  = center[2] + dist*2;
+  //
+//  min_coord[0] = mins[0];
+//  min_coord[1] = mins[0];
+//  min_coord[2] = mins[0];
+//  max_coord[0] = maxs[0];
+//  max_coord[1] = maxs[1];
+//  max_coord[2] = maxs[2];
 }
 
 //----------------------------------------------------------------------------
@@ -121,11 +167,17 @@ void displayCall(vertextype v_array, normaltype n_array)
             up[0],up[1],up[2]);
 
   glPushMatrix();
+
+
   float rotationMatrix[16];
   qrot.getRotMat(rotationMatrix);
   glMultMatrixf(rotationMatrix);
 
-  glColor3f(0.1f, 0.1f, 0.6f);
+//  Cube::draw();
+
+  glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+
+  glColor3f(1.0f, 1.0f, 0.6f);
 
   if (render_enabled)
   {
@@ -139,6 +191,8 @@ void displayCall(vertextype v_array, normaltype n_array)
     }
     glEnd();
   }
+
+//  Cube::draw();
 
   glPopMatrix();
 }
@@ -286,3 +340,4 @@ void run_graphics_loop(GLFWwindow* window, const std::function<void()> &displayF
   // Terminate GLFW
   glfwTerminate();
 }
+
