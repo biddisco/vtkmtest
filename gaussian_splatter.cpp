@@ -34,6 +34,7 @@
 # include <chrono>
   std::size_t os_threads;
 
+# ifndef START_TIMER_BLOCK
 // start timer
 # define START_TIMER_BLOCK(name) \
   std::chrono::time_point<std::chrono::system_clock> start_##name, end_##name; \
@@ -46,7 +47,7 @@
   std::cout << "CSVData " \
     << ", threads, "     << os_threads \
     << ", " #name "_time, " << elapsed_##name.count() << std::endl;
-
+# endif
 #else
 # define START_TIMER_BLOCK(name)
 # define END_TIMER_BLOCK(name)
@@ -71,6 +72,8 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 # include "windows.h""
 #endif
 
+#include <boost/bind.hpp>
+//
 #include "isosurface.h"
 
 #if defined (__APPLE__)
@@ -165,7 +168,7 @@ int init_pipeline(int argc, char* argv[])
   // create a field by splatting particles into our volume
   //
   const int num_particles = 1;
-  std::vector<double> xdata(num_particles), ydata(num_particles), zdata(num_particles);
+  std::vector<double>  xdata(num_particles), ydata(num_particles), zdata(num_particles);
   std::vector<float>  hdata(num_particles);
   std::vector<float>  sdata(num_particles);
   std::random_device rd;
@@ -216,14 +219,14 @@ int init_pipeline(int argc, char* argv[])
 
   // we are using variable smoothing lenght particles, so initialize
   // the kernel with default h=1.0
-  vtkm::worklet::kernels::Gaussian<3> k(1.0);
+  vtkm::worklet::splatkernels::Gaussian<3> k(1.0);
 //  vtkm::worklet::kernels::Spline3rdOrder<3> k(1.0);
 //  vtkm::worklet::kernels::GaussianUnitHeight<3> k(1.0);
 
-  vtkm::worklet::KernelSplatterFilterUniformGrid<vtkm::worklet::kernels::Gaussian<3>, DeviceAdapter>
+  vtkm::worklet::KernelSplatterFilterUniformGrid<vtkm::worklet::splatkernels::Gaussian<3>, DeviceAdapter>
     splatter(dims, origin, spacing, dataSet, k);
 
-  splatter.run<VTKM_DEFAULT_STORAGE_TAG, VTKM_DEFAULT_STORAGE_TAG>
+  splatter.run
     (xValues, yValues, zValues, hValues, sValues, fieldArray);
 
   END_TIMER_BLOCK(splatter)
@@ -304,7 +307,7 @@ int main(int argc, char **argv)
   typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
 
 
-  std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
+  std::function<void()> display_function = boost::bind(&displayCall<vertextype, normaltype>,
                                                      verticesArray,
                                                      normalsArray);
   run_graphics_loop(window, display_function);

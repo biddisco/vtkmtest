@@ -67,6 +67,8 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 # include "windows.h""
 #endif
 
+#include <boost/bind.hpp>
+
 #include "isosurface.h"
 
 #if defined (__APPLE__)
@@ -199,7 +201,7 @@ int init_pipeline(int argc, char* argv[])
     START_TIMER_BLOCK(tangle)
 
     // Generate tangle field, N = num vertices for field evaluaition
-    vtkm::cont::ArrayHandleCounting<vtkm::Id> vertexCountImplicitArray(0, vdims[0] * vdims[1] * vdims[2]);
+    vtkm::cont::ArrayHandleCounting<vtkm::Id> vertexCountImplicitArray(0, 1, vdims[0] * vdims[1] * vdims[2]);
     vtkm::worklet::DispatcherMapField<TangleField> tangleFieldDispatcher(TangleField(vdims, mins, maxs));
     tangleFieldDispatcher.Invoke(vertexCountImplicitArray, fieldArray);
 
@@ -243,7 +245,7 @@ int main(int argc, char **argv)
   typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > vertextype;
   typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;
 
-  std::function<void()> display_function = std::bind(&displayCall<vertextype, normaltype>,
+  std::function<void()> display_function = boost::bind(&displayCall<vertextype, normaltype>,
                                                      verticesArray,
                                                      normalsArray);
 
