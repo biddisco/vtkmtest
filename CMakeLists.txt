@@ -95,6 +95,13 @@ find_package(Boost
 )
 
 #--------------------------------------------------
+# OSX warnings
+#--------------------------------------------------
+# clang
+add_definitions(-Wno-deprecated-declarations)
+#gcc  -Wno-deprecated)
+
+#--------------------------------------------------
 # Find GLFW
 #--------------------------------------------------
 find_package(GLFW QUIET)
