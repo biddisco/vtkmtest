@@ -88,6 +88,7 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 //
 typedef vtkm::FloatDefault FieldType;
 typedef vtkm::Vec<FieldType, 3> floatVec;
+typedef vtkm::Vec<vtkm::Float64, 3> doubleVec;
 
 //----------------------------------------------------------------------------
 // Global variables
@@ -144,15 +145,15 @@ int init_pipeline(int argc, char* argv[])
   //
   const vtkm::Id3 dims(dim, dim, dim);
   const vtkm::Id3 vdims(dim+1, dim+1, dim+1);
-  const floatVec  fdim(dims[0], dims[1], dims[2]);
+  const doubleVec fdim(dims[0], dims[1], dims[2]);
   //
   // shift origin so that volume is centred on {0,0,0}
-  const floatVec spacing(1.0, 1.0, 1.0);
+  const doubleVec spacing(1.0, 1.0, 1.0);
 //  const floatVec origin(-spacing[0]*fdim[0]*0.5, -spacing[1]*fdim[1]*0.5, -spacing[2]*fdim[0]*0.5);
-  const floatVec origin(0.0, 0.0, 0.0);
+  const doubleVec origin(0.0, 0.0, 0.0);
   // for our GL window
   min_cube = origin;
-  max_cube = origin + (fdim*spacing);
+  max_cube = /*origin + */(spacing*fdim);
   view_origin = static_cast<vtkm::FloatDefault>(0.5) * (fdim*spacing); // +
   // static_cast<vtkm::FloatDefault>(0.5) * (fdim*spacing);
   view_origin = origin;
