@@ -18,6 +18,10 @@
 //  this software.
 //============================================================================
 
+// suggested args
+// 512 1000 5 0.025
+// --hpx:threads=8
+
 #include <iostream>
 #include <fstream>
 #define _USE_MATH_DEFINES
@@ -27,6 +31,8 @@
 #ifndef VTKM_DEVICE_ADAPTER
 # define VTKM_DEVICE_ADAPTER VTKM_DEVICE_ADAPTER_SERIAL
 #endif
+
+#define NO_GRAPHICS
 
 #define HPX_TIMING
 
@@ -84,7 +90,9 @@ typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
 # include <GL/glu.h>
 #endif
 //
-#include "display.cpp"
+#ifndef NO_GRAPHICS
+# include "display.cpp"
+#endif
 //
 typedef vtkm::FloatDefault FieldType;
 typedef vtkm::Vec<FieldType, 3> floatVec;
@@ -165,7 +173,7 @@ int init_pipeline(int argc, char* argv[])
   //
   vtkm::cont::DataSet dataSet = MakeEmptyVolumeDataset(dims, origin, spacing);
 
-  START_TIMER_BLOCK(splatter)
+  START_TIMER_BLOCK(total)
 
   //
   // create a field by splatting particles into our volume
@@ -233,8 +241,6 @@ int init_pipeline(int argc, char* argv[])
   splatter.run
     (xValues, yValues, zValues, hValues, sValues, fieldArray);
 
-  END_TIMER_BLOCK(splatter)
-
   vtkm::worklet::debug::OutputArrayDebug(fieldArray, "fieldArray");
 
   //
@@ -262,6 +268,7 @@ int init_pipeline(int argc, char* argv[])
                        normalsArray);
 
   END_TIMER_BLOCK(isosurface)
+  END_TIMER_BLOCK(total)
 
   vtkm::worklet::debug::OutputArrayDebug(verticesArray, "verticesArray");
 
@@ -279,7 +286,7 @@ int main(int argc, char **argv)
 
     // Get a reference to one of the main OS threads
     hpx::threads::executors::main_pool_executor scheduler;
-
+#ifndef NO_GRAPHICS
     // create gui on OS thread
     hpx::future<GLFWwindow*> init_g = hpx::async(scheduler, init_glfw, 800, 800);
     GLFWwindow *window = init_g.get();
@@ -296,6 +303,7 @@ int main(int argc, char **argv)
 
     // can do something else while loop is executing in the background ...
     loop.wait();
+#endif
   }
   return hpx::finalize();
 }
