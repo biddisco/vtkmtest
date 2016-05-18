@@ -50,13 +50,13 @@ Quaternion qrot;
 bool render_enabled = true;
 double lastx, lasty;
 //
-float eye[3] = {0,0,4};
+float eye[3] = {0,0,400};
 float center[3] = {0,0,0};
 float up[3] = {0,1,0};
 float zoom=45;
 float aspect = 1.0;
 float zNear = 1.0;
-float zFar = 30.0;
+float zFar = 300.0;
 float min_coord[3] = {0,0,0};
 float max_coord[3] = {0.0001, 0.0001, 0.0001};
 

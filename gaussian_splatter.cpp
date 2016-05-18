@@ -185,8 +185,9 @@ int init_pipeline(int argc, char* argv[])
   double h_     = spacing[0]*fdim[0]/10.0;
   double norm_  = pow(M_PI, 1.5) * h_*h_*h_;
 
-  std::uniform_real_distribution<>  H(spacing[0]*fdim[0]/10.0, spacing[0]*fdim[0]/10.0);
-  std::uniform_real_distribution<>  scale(0.1, 5.0);
+//  std::uniform_real_distribution<>  H(spacing[0]*fdim[0]/10.0, spacing[0]*fdim[0]/10.0);
+  std::uniform_real_distribution<>  H(spacing[0]*5.0, spacing[0]*5.0);
+  std::uniform_real_distribution<>  scale(1000.1, 1005.0);
   std::generate(xdata.begin(), xdata.end(), [&]{return x_dis(gen);});
   std::generate(ydata.begin(), ydata.end(), [&]{return y_dis(gen);});
   std::generate(zdata.begin(), zdata.end(), [&]{return z_dis(gen); });
