@@ -57,7 +57,7 @@ std::size_t os_threads;
 #include <vtkm/cont/DynamicArrayHandle.h>
 #include <vtkm/worklet/DispatcherMapField.h>
 #include <vtkm/worklet/WorkletMapField.h>
-#include <vtkm/worklet/IsosurfaceUniformGrid.h>
+#include <vtkm/filter/MarchingCubes.h>
 #include <vtkm/Pair.h>
 
 // set a global typedef that is the chosen device tag
@@ -137,7 +137,7 @@ vtkm::cont::DataSet MakeEmptyVolumeDataset(vtkm::Id3 dims, const floatVec &origi
   const vtkm::Id3 vdims(dims[0]+1, dims[1]+1, dims[2]+1);
 
   vtkm::cont::ArrayHandleUniformPointCoordinates coordinates(vdims, origin, spacing);
-  dataSet.AddCoordinateSystem(vtkm::cont::CoordinateSystem("coordinates", 1, coordinates));
+  dataSet.AddCoordinateSystem(vtkm::cont::CoordinateSystem("coordinates", coordinates));
 
   static const vtkm::IdComponent ndim = 3;
   vtkm::cont::CellSetStructured<ndim> cellSet("cells");
@@ -210,12 +210,14 @@ int init_pipeline(int argc, char* argv[])
   //
   // add field to the dataset
   //
-  dataSet.AddField(vtkm::cont::Field("nodevar", 1, vtkm::cont::Field::ASSOC_POINTS, fieldArray));
+  dataSet.AddField(vtkm::cont::Field("nodevar", vtkm::cont::Field::ASSOC_POINTS, fieldArray));
+  vtkm::cont::CellSetStructured<3> cellSet;
+  dataSet.GetCellSet().CopyTo(cellSet);
 
   //
   // Create isosurface filter, use cell dimensions to initialize
   //
-  vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter> isosurfaceFilter(dims, dataSet);
+  vtkm::worklet::MarchingCubes<vtkm::Float32,DeviceAdapter> isosurfaceFilter;
 
   START_TIMER_BLOCK(isosurface)
 
@@ -223,10 +225,11 @@ int init_pipeline(int argc, char* argv[])
   // and compute the isosurface
   //
   isosurfaceFilter.Run(isovalue,
-    dataSet.GetField("nodevar").GetData(),
-    verticesArray,
-    normalsArray,
-    scalarsArray);
+                       cellSet,
+                       dataSet.GetCoordinateSystem(),
+                       scalarsArray,
+                       verticesArray,
+                       normalsArray);
 
   END_TIMER_BLOCK(isosurface)
   

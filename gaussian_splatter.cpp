@@ -28,7 +28,7 @@
 # define VTKM_DEVICE_ADAPTER VTKM_DEVICE_ADAPTER_SERIAL
 #endif
 
-//#define HPX_TIMING
+#define HPX_TIMING
 
 #ifdef HPX_TIMING
 # include <chrono>
@@ -61,7 +61,7 @@
 #include <vtkm/worklet/DispatcherMapField.h>
 #include <vtkm/worklet/WorkletMapField.h>
 #include <vtkm/worklet/KernelSplatter.h>
-#include <vtkm/worklet/IsosurfaceUniformGrid.h>
+#include <vtkm/filter/MarchingCubes.h>
 #include <vtkm/Pair.h>
 
 //now that the device adapter is included set a global typedef
@@ -110,7 +110,7 @@ vtkm::cont::DataSet MakeEmptyVolumeDataset(vtkm::Id3 dims, const floatVec &origi
   const vtkm::Id3 vdims(dims[0]+1, dims[1]+1, dims[2]+1);
 
   vtkm::cont::ArrayHandleUniformPointCoordinates coordinates(vdims, origin, spacing);
-  dataSet.AddCoordinateSystem(vtkm::cont::CoordinateSystem("coordinates", 1, coordinates));
+  dataSet.AddCoordinateSystem(vtkm::cont::CoordinateSystem("coordinates", coordinates));
 
   static const vtkm::IdComponent ndim = 3;
   vtkm::cont::CellSetStructured<ndim> cellSet("cells");
@@ -132,7 +132,7 @@ int init_pipeline(int argc, char* argv[])
   // Abort if dimension and file name are not provided
   if (argc < 3)
   {
-    std::cout << "Usage: isosurface {dimension} {isovalue} {optional-file-name} " << std::endl;
+    std::cout << "Usage: splatter {dimension} {points} {radius} {isovalue} {optional-file-name} " << std::endl;
     return 0;
   }
 
@@ -141,7 +141,9 @@ int init_pipeline(int argc, char* argv[])
   // NB. Cell dimension is dim, points are dim+1 in each dimension
   //
   int dim = atoi(argv[1]);
-  float isovalue = atof(argv[2]);
+  int points = atoi(argv[2]);
+  int radius = atof(argv[3]);
+  float isovalue = atof(argv[4]);
   //
   const vtkm::Id3 dims(dim, dim, dim);
   const vtkm::Id3 vdims(dim+1, dim+1, dim+1);
@@ -168,7 +170,7 @@ int init_pipeline(int argc, char* argv[])
   //
   // create a field by splatting particles into our volume
   //
-  const int num_particles = 1;
+  const int num_particles = points;
   std::vector<double>  xdata(num_particles), ydata(num_particles), zdata(num_particles);
   std::vector<float>  hdata(num_particles);
   std::vector<float>  sdata(num_particles);
@@ -183,7 +185,7 @@ int init_pipeline(int argc, char* argv[])
   double h_     = spacing[0]*fdim[0]/10.0;
   double norm_  = pow(M_PI, 1.5) * h_*h_*h_;
 
-  std::uniform_real_distribution<>      H(spacing[0]*fdim[0]/10.0, spacing[0]*fdim[0]/10.0);
+  std::uniform_real_distribution<>  H(spacing[0]*fdim[0]/10.0, spacing[0]*fdim[0]/10.0);
   std::uniform_real_distribution<>  scale(0.1, 5.0);
   std::generate(xdata.begin(), xdata.end(), [&]{return x_dis(gen);});
   std::generate(ydata.begin(), ydata.end(), [&]{return y_dis(gen);});
@@ -237,12 +239,14 @@ int init_pipeline(int argc, char* argv[])
   //
   // add field to the dataset
   //
-  dataSet.AddField(vtkm::cont::Field("nodevar", 1, vtkm::cont::Field::ASSOC_POINTS, fieldArray));
+  dataSet.AddField(vtkm::cont::Field("pointvar", vtkm::cont::Field::ASSOC_POINTS, fieldArray));
+  vtkm::cont::CellSetStructured<3> cellSet;
+  dataSet.GetCellSet().CopyTo(cellSet);
 
   //
-  // Create isosurface filter, use cell dimensions to initialize
+  // Create isosurface filter
   //
-  vtkm::worklet::IsosurfaceFilterUniformGrid<vtkm::Float32, DeviceAdapter> isosurfaceFilter(dims, dataSet);
+  vtkm::worklet::MarchingCubes<vtkm::Float32,DeviceAdapter> isosurfaceFilter;
 
   START_TIMER_BLOCK(isosurface)
 
@@ -250,10 +254,11 @@ int init_pipeline(int argc, char* argv[])
   // and compute the isosurface
   //
   isosurfaceFilter.Run(isovalue,
-                        dataSet.GetField("nodevar").GetData(),              
-                        verticesArray,
-                        normalsArray,
-                        scalarsArray);
+                       cellSet,
+                       dataSet.GetCoordinateSystem(),
+                       fieldArray,
+                       verticesArray,
+                       normalsArray);
 
   END_TIMER_BLOCK(isosurface)
 
@@ -302,7 +307,7 @@ int main(int argc, char **argv)
   init_pipeline(argc, argv);
   float mc1[3] = {min_cube[0], min_cube[1], min_cube[2]};
   float mc2[3] = {max_cube[0], max_cube[1], max_cube[2]};
-//  set_viewpoint(view_origin[0],view_origin[1],view_origin[2], view_dist, mc1, mc2);
+  set_viewpoint(view_origin[0],view_origin[1],view_origin[2], view_dist, mc1, mc2);
   GLFWwindow *window = init_glfw(800, 800);
   typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > vertextype;
   typedef vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float32,3> > normaltype;

@@ -139,12 +139,12 @@ void set_viewpoint(float v0, float v1, float v2, float dist, float mins[3], floa
   zNear = 0.1;
   zFar  = center[2] + dist*2;
   //
-//  min_coord[0] = mins[0];
-//  min_coord[1] = mins[0];
-//  min_coord[2] = mins[0];
-//  max_coord[0] = maxs[0];
-//  max_coord[1] = maxs[1];
-//  max_coord[2] = maxs[2];
+  min_coord[0] = mins[0];
+  min_coord[1] = mins[1];
+  min_coord[2] = mins[2];
+  max_coord[0] = maxs[0];
+  max_coord[1] = maxs[1];
+  max_coord[2] = maxs[2];
 }
 
 //----------------------------------------------------------------------------
@@ -173,7 +173,7 @@ void displayCall(vertextype v_array, normaltype n_array)
   qrot.getRotMat(rotationMatrix);
   glMultMatrixf(rotationMatrix);
 
-//  Cube::draw();
+  Cube::draw();
 
   glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 

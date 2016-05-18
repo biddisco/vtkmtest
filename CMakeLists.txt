@@ -156,13 +156,25 @@ set(TESTS
 #--------------------------------------------------
 # normal, cuda, hpx versions
 #--------------------------------------------------
+include_directories(${TBB_INCLUDE_DIRS})
+
 foreach(test ${TESTS})
   add_executable(${test} ${test}.cpp)
   target_link_libraries(${test} ${TEST_LIBS})
+  target_compile_options(${test} PRIVATE ${VTKm_COMPILE_OPTIONS})
 
   if (VTKm_ENABLE_CUDA)
     cuda_add_executable(cuda_${test} ${test}.cu)
     target_link_libraries(cuda_${test} ${TEST_LIBS})
+  endif()
+
+  if (VTKm_ENABLE_TBB)
+    add_executable(tbb_${test} ${test}_tbb.cpp)
+    target_link_libraries(tbb_${test}
+      iostreams_component
+      ${TBB_LIBRARIES}
+      ${TEST_LIBS}
+    )
   endif()
 
   if (VTKm_ENABLE_HPX)
